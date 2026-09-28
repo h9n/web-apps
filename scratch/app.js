@@ -20,11 +20,16 @@ const editorView = $("#editor-view");
 const notesList = $("#notes-list");
 const emptyState = $("#empty-state");
 const editor = $("#editor");
+const editorHighlight = $("#editor-highlight");
+const editorStage = $("#editor-stage");
+const reader = $("#reader");
+const readerButton = $("#reader-button");
 const saveStatus = $("#save-status");
 const settingsDialog = $("#settings-dialog");
 const dataDialog = $("#data-dialog");
 const wrapToggle = $("#wrap-toggle");
 const typingToggle = $("#typing-toggle");
+const orgToggle = $("#org-toggle");
 const storageStatus = $("#storage-status");
 const importInput = $("#import-input");
 
@@ -35,6 +40,7 @@ let dirty = false;
 let editRevision = 0;
 let idleSaveTimer = null;
 let maxSaveTimer = null;
+let readerMode = false;
 let settings = loadSettings();
 const viewportBaselines = { portrait: 0, landscape: 0 };
 
@@ -60,6 +66,52 @@ function applySettings() {
   document.querySelectorAll("[data-setting]").forEach(button => {
     button.classList.toggle("active", settings[button.dataset.setting] === button.dataset.value);
   });
+}
+
+function syncOrgPresentation() {
+  const orgEnabled = activeNote?.syntax === "org";
+  orgToggle.checked = orgEnabled;
+  readerButton.hidden = !orgEnabled;
+  if (!orgEnabled) readerMode = false;
+  readerButton.textContent = readerMode ? "Edit" : "Read";
+  editorStage.hidden = readerMode;
+  reader.hidden = !readerMode;
+  document.body.classList.toggle("org-editing", orgEnabled && !readerMode);
+  if (orgEnabled) editorHighlight.innerHTML = highlightOrgSource(editor.value);
+  else editorHighlight.textContent = "";
+  if (readerMode) reader.innerHTML = renderOrgDocument(editor.value);
+}
+
+function syncHighlightScroll() {
+  editorHighlight.scrollTop = editor.scrollTop;
+  editorHighlight.scrollLeft = editor.scrollLeft;
+}
+
+function setOrgSyntax(enabled) {
+  if (!activeNote) return;
+  readerMode = false;
+  activeNote.syntax = enabled ? "org" : "plain";
+  activeNote.updatedAt = Date.now();
+  dirty = true;
+  editRevision += 1;
+  saveStatus.textContent = "Unsaved";
+  syncOrgPresentation();
+  scheduleSave();
+}
+
+async function toggleReaderMode() {
+  if (activeNote?.syntax !== "org") return;
+  if (!readerMode) {
+    await flushSave();
+    reader.innerHTML = renderOrgDocument(editor.value);
+    reader.scrollTop = editor.scrollTop;
+    readerMode = true;
+    editor.blur();
+  } else {
+    readerMode = false;
+  }
+  syncOrgPresentation();
+  if (!readerMode) requestAnimationFrame(() => editor.focus());
 }
 
 function updateSetting(key, value) {
@@ -101,6 +153,7 @@ function transact(mode, operation) {
 
 async function loadNotes() {
   notes = await transact("readonly", store => store.getAll()) || [];
+  notes = notes.map(note => ({ ...note, syntax: note.syntax === "org" ? "org" : "plain" }));
   sortNotes();
   renderNotes();
 }
@@ -111,7 +164,10 @@ function sortNotes() {
 }
 
 function noteHeading(text) {
-  return text.split(/\r?\n/).map(line => line.trim()).find(Boolean) || "Untitled";
+  const orgTitle = text.match(/^#\+title:\s*(.+)$/im);
+  if (orgTitle) return orgTitle[1].trim();
+  const first = text.split(/\r?\n/).map(line => line.trim()).find(Boolean) || "Untitled";
+  return first.replace(/^\*+\s+/, "");
 }
 
 function notePreview(text) {
@@ -119,13 +175,132 @@ function notePreview(text) {
   return lines.slice(1).join(" ") || "No additional text";
 }
 
-function safeFilename(text) {
+function safeFilename(text, syntax = "plain") {
   const cleaned = noteHeading(text)
     .replace(/[\\/:*?"<>|]/g, "-")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 80);
-  return `${cleaned || "Untitled"}.txt`;
+  const extension = syntax === "org" ? "org" : "txt";
+  return `${cleaned || "Untitled"}.${extension}`;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[character]);
+}
+
+function safeLinkHref(value) {
+  try {
+    const url = new URL(value, location.href);
+    return ["http:", "https:", "mailto:", "tel:"].includes(url.protocol) ? url.href : null;
+  } catch { return null; }
+}
+
+function renderOrgInline(value) {
+  let text = escapeHtml(value);
+  const protectedParts = [];
+  const protect = html => `\u0000${protectedParts.push(html) - 1}\u0000`;
+  text = text.replace(/\[\[([^\]]+)\](?:\[([^\]]+)\])?\]/g, (_, target, label) => {
+    const href = safeLinkHref(target);
+    const caption = escapeHtml(label || target);
+    return protect(href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${caption}</a>` : caption);
+  });
+  text = text.replace(/([~=])([^\n]+?)\1/g, (_, marker, content) => protect(`<code>${content}</code>`));
+  const styles = [
+    [/\*([^*\n]+)\*/g, "strong"],
+    [/\/([^/\n]+)\//g, "em"],
+    [/_([^_\n]+)_/g, "u"],
+    [/\+([^+\n]+)\+/g, "del"]
+  ];
+  for (const [pattern, tag] of styles) {
+    text = text.replace(pattern, (_, content) => protect(`<${tag}>${content}</${tag}>`));
+  }
+  return text.replace(/\u0000(\d+)\u0000/g, (_, index) => protectedParts[Number(index)]);
+}
+
+function highlightOrgInline(value) {
+  let text = escapeHtml(value);
+  const protectedParts = [];
+  const protect = html => `\u0000${protectedParts.push(html) - 1}\u0000`;
+  text = text.replace(/\[\[([^\]]+)\](?:\[([^\]]+)\])?\]/g, (_, target, label) => {
+    const visible = label ? `[[${target}][${label}]]` : `[[${target}]]`;
+    return protect(`<span class="org-link">${visible}</span>`);
+  });
+  text = text.replace(/([~=])([^\n]+?)\1/g, (_, marker, content) => protect(`<span class="org-code">${marker}${content}${marker}</span>`));
+  text = text.replace(/([*\/_+])([^\n]+?)\1/g, '<span class="org-marker">$1</span>$2<span class="org-marker">$1</span>');
+  return text.replace(/\u0000(\d+)\u0000/g, (_, index) => protectedParts[Number(index)]);
+}
+
+function highlightOrgSource(text) {
+  return text.split("\n").map(line => {
+    if (/^\s*#(?!\+)/.test(line)) return `<span class="org-comment">${escapeHtml(line)}</span>`;
+    if (/^#\+/.test(line)) return `<span class="org-meta">${escapeHtml(line)}</span>`;
+    const heading = line.match(/^(\*+\s+)(.*)$/);
+    if (heading) return `<span class="org-heading">${escapeHtml(heading[1])}${highlightOrgInline(heading[2])}</span>`;
+    const list = line.match(/^(\s*(?:[-+] |\d+[.)] ))(.*)$/);
+    if (list) return `<span class="org-marker">${escapeHtml(list[1])}</span>${highlightOrgInline(list[2])}`;
+    return highlightOrgInline(line);
+  }).join("\n") + "\n";
+}
+
+function renderOrgDocument(text) {
+  const output = [];
+  const lines = text.split(/\r?\n/);
+  let paragraph = [];
+  let listType = null;
+  let block = null;
+  let blockLines = [];
+  const flushParagraph = () => {
+    if (paragraph.length) output.push(`<p>${renderOrgInline(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  };
+  const closeList = () => {
+    if (listType) output.push(`</${listType}>`);
+    listType = null;
+  };
+  for (const line of lines) {
+    if (block) {
+      if (new RegExp(`^#\\+end_${block}$`, "i").test(line)) {
+        const content = escapeHtml(blockLines.join("\n"));
+        output.push(block === "quote" ? `<blockquote>${renderOrgInline(blockLines.join(" "))}</blockquote>` : `<pre><code>${content}</code></pre>`);
+        block = null; blockLines = [];
+      } else blockLines.push(line);
+      continue;
+    }
+    const blockStart = line.match(/^#\+begin_(src|example|quote)\b/i);
+    if (blockStart) { flushParagraph(); closeList(); block = blockStart[1].toLowerCase(); continue; }
+    if (!line.trim()) { flushParagraph(); closeList(); continue; }
+    const heading = line.match(/^(\*{1,})\s+(.*)$/);
+    if (heading) {
+      flushParagraph(); closeList();
+      const level = Math.min(heading[1].length, 6);
+      output.push(`<h${level}>${renderOrgInline(heading[2])}</h${level}>`);
+      continue;
+    }
+    if (/^-{5,}\s*$/.test(line)) { flushParagraph(); closeList(); output.push("<hr>"); continue; }
+    const keyword = line.match(/^#\+([a-z_]+):\s*(.*)$/i);
+    if (keyword) {
+      flushParagraph(); closeList();
+      output.push(keyword[1].toLowerCase() === "title" ? `<h1>${renderOrgInline(keyword[2])}</h1>` : `<p class="org-keyword">${escapeHtml(line)}</p>`);
+      continue;
+    }
+    if (/^\s*#(?!\+)/.test(line)) continue;
+    const item = line.match(/^\s*(?:(-)|(?:\d+[.)]))\s+(?:\[([ Xx-])\]\s+)?(.*)$/);
+    if (item) {
+      flushParagraph();
+      const wanted = item[1] ? "ul" : "ol";
+      if (listType !== wanted) { closeList(); output.push(`<${wanted}>`); listType = wanted; }
+      const checkbox = item[2] == null ? "" : `<span class="org-checkbox">[${item[2]}]</span> `;
+      output.push(`<li>${checkbox}${renderOrgInline(item[3])}</li>`);
+      continue;
+    }
+    closeList(); paragraph.push(line.trim());
+  }
+  flushParagraph(); closeList();
+  if (block) output.push(`<pre><code>${escapeHtml(blockLines.join("\n"))}</code></pre>`);
+  return output.join("\n");
 }
 
 function formatDate(timestamp) {
@@ -180,7 +355,7 @@ function makeId() {
 async function createNote() {
   await flushSave();
   const now = Date.now();
-  const note = { id: makeId(), text: "", createdAt: now, updatedAt: now };
+  const note = { id: makeId(), text: "", syntax: "plain", createdAt: now, updatedAt: now };
   await transact("readwrite", store => store.put(note));
   notes.unshift(note);
   openNote(note.id);
@@ -192,10 +367,15 @@ function openNote(id) {
   clearSaveTimers();
   dirty = false;
   editRevision += 1;
+  readerMode = false;
+  activeNote.syntax = activeNote.syntax === "org" ? "org" : "plain";
   editor.value = activeNote.text;
+  editor.scrollTop = 0;
+  editor.scrollLeft = 0;
   listView.hidden = true;
   editorView.hidden = false;
   saveStatus.textContent = "Saved";
+  syncOrgPresentation();
   history.pushState({ noteId: id }, "", `#${encodeURIComponent(id)}`);
   syncVisualViewport();
   requestAnimationFrame(() => {
@@ -209,6 +389,8 @@ async function closeEditor({ fromHistory = false } = {}) {
   await flushSave();
   if (activeNote && !activeNote.text.trim()) await removeNote(activeNote.id, false);
   activeNote = null;
+  readerMode = false;
+  document.body.classList.remove("org-editing");
   editorView.hidden = true;
   listView.hidden = false;
   sortNotes();
@@ -233,6 +415,10 @@ function queueSave() {
   if (!activeNote) return;
   activeNote.text = editor.value;
   activeNote.updatedAt = Date.now();
+  if (activeNote.syntax === "org") {
+    editorHighlight.innerHTML = highlightOrgSource(editor.value);
+    syncHighlightScroll();
+  }
   dirty = true;
   editRevision += 1;
   saveStatus.textContent = "Unsaved";
@@ -288,7 +474,7 @@ async function shareActiveNote() {
   if (!activeNote) return;
   await flushSave();
   const title = noteHeading(activeNote.text);
-  const file = new File([activeNote.text], safeFilename(activeNote.text), { type: "text/plain" });
+  const file = new File([activeNote.text], safeFilename(activeNote.text, activeNote.syntax), { type: "text/plain" });
   try {
     if (navigator.canShare?.({ files: [file] })) {
       await navigator.share({ files: [file], title });
@@ -340,6 +526,7 @@ async function importBackup(file) {
   const validNotes = data.notes.filter(note => note && typeof note.id === "string" && typeof note.text === "string").map(note => ({
     id: note.id,
     text: note.text,
+    syntax: note.syntax === "org" ? "org" : "plain",
     createdAt: Number(note.createdAt) || Date.now(),
     updatedAt: Number(note.updatedAt) || Date.now()
   }));
@@ -400,7 +587,9 @@ function wireEvents() {
   $("#back-button").addEventListener("click", () => closeEditor());
   $("#delete-button").addEventListener("click", () => activeNote && removeNote(activeNote.id));
   $("#share-button").addEventListener("click", shareActiveNote);
+  readerButton.addEventListener("click", toggleReaderMode);
   editor.addEventListener("input", queueSave);
+  editor.addEventListener("scroll", syncHighlightScroll);
   editor.addEventListener("focus", syncVisualViewport);
   editor.addEventListener("blur", () => {
     if (dirty) saveActiveNote();
@@ -413,6 +602,7 @@ function wireEvents() {
 
   const openSettings = () => {
     applySettings();
+    syncOrgPresentation();
     settingsDialog.showModal();
   };
   $("#editor-settings-button").addEventListener("click", openSettings);
@@ -425,6 +615,7 @@ function wireEvents() {
   });
   wrapToggle.addEventListener("change", () => updateSetting("wrap", wrapToggle.checked));
   typingToggle.addEventListener("change", () => updateSetting("typing", typingToggle.checked));
+  orgToggle.addEventListener("change", () => setOrgSyntax(orgToggle.checked));
   $("#export-button").addEventListener("click", exportBackup);
   $("#import-button").addEventListener("click", () => importInput.click());
   importInput.addEventListener("change", async () => {

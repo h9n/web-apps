@@ -13,6 +13,11 @@
   --segment-bg: #080808;
   --backdrop: rgba(0, 0, 0, .72);
   --selection: rgba(10, 132, 255, .42);
+  --org-heading: #ff9f0a;
+  --org-marker: #bf5af2;
+  --org-link: #64d2ff;
+  --org-code: #30d158;
+  --org-meta: #8e8e93;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -124,13 +129,18 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .editor-bar { flex: 0 0 auto; align-items: flex-end; padding-left: calc(14px + var(--safe-left)); }
 .editor-actions { display: flex; align-items: center; gap: 9px; }
 .save-status { color: var(--muted); font-size: 12px; padding-bottom: 14px; white-space: nowrap; }
-#editor {
+#editor-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+#editor, #editor-highlight {
   display: block;
   width: 100%;
   height: 100%;
-  flex: 1 1 auto;
   min-height: 0;
-  resize: none;
   border: 0;
   border-radius: 0;
   margin: 0;
@@ -145,16 +155,57 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   font-weight: 800;
   letter-spacing: 0;
   tab-size: 4;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+#editor {
+  position: relative;
+  z-index: 2;
+  resize: none;
   outline: none;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
+#editor-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--ink);
+}
+body.org-editing #editor { background: transparent; color: transparent; -webkit-text-fill-color: transparent; }
+body.org-editing #editor::placeholder { -webkit-text-fill-color: var(--placeholder); }
+.org-heading { color: var(--org-heading); }
+.org-marker { color: var(--org-marker); }
+.org-link { color: var(--org-link); }
+.org-code { color: var(--org-code); }
+.org-meta, .org-comment { color: var(--org-meta); }
 #editor::selection { background: var(--selection); }
 #editor::placeholder { color: var(--placeholder); }
-body.size-small #editor { font-size: 18px; line-height: 1.4; font-weight: 500; }
-body.size-xsmall #editor { font-size: 14px; line-height: 1.35; font-weight: 450; }
-body.font-mono #editor { font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace; }
-body.no-wrap #editor { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+body.size-small :is(#editor, #editor-highlight) { font-size: 18px; line-height: 1.4; font-weight: 500; }
+body.size-xsmall :is(#editor, #editor-highlight) { font-size: 14px; line-height: 1.35; font-weight: 450; }
+body.font-mono :is(#editor, #editor-highlight) { font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace; }
+body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+
+#reader {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px calc(20px + var(--safe-right)) calc(40px + var(--safe-bottom)) calc(20px + var(--safe-left));
+  font-size: 19px;
+  line-height: 1.5;
+  -webkit-overflow-scrolling: touch;
+}
+#reader > :first-child { margin-top: 0; }
+#reader h1, #reader h2, #reader h3, #reader h4, #reader h5, #reader h6 { line-height: 1.15; }
+#reader a { color: var(--system-blue); }
+#reader code, #reader pre { font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace; }
+#reader code { color: var(--org-code); }
+#reader pre { overflow-x: auto; padding: 14px; border-radius: 10px; background: var(--surface); white-space: pre; }
+#reader blockquote { margin-inline: 0; padding-left: 16px; border-left: 3px solid var(--line); color: var(--muted); }
+#reader .org-checkbox { color: var(--muted); font-family: ui-monospace, monospace; }
+#reader .org-keyword { color: var(--muted); }
 
 #settings-dialog, #data-dialog {
   width: min(100%, 560px);
@@ -205,6 +256,11 @@ body.landscape-keyboard .editor-bar { display: none; }
     --segment-bg: #e9e9ee;
     --backdrop: rgba(0, 0, 0, .28);
     --selection: rgba(0, 122, 255, .28);
+    --org-heading: #a05a00;
+    --org-marker: #8944ab;
+    --org-link: #0066cc;
+    --org-code: #16833b;
+    --org-meta: #777;
   }
 }
 

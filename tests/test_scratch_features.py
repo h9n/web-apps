@@ -58,6 +58,49 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertNotIn('const dateLabel = settings.sort', self.js)
         self.assertNotIn('`${dateLabel} ${formatDate(note[dateField])}`', self.js)
 
+    def test_org_mode_is_explicit_and_per_note(self):
+        self.assertIn('id="org-toggle"', self.html)
+        self.assertIn('activeNote.syntax === "org"', self.js)
+        self.assertIn('syntax: note.syntax === "org" ? "org" : "plain"', self.js)
+
+    def test_org_editor_has_highlight_mirror_and_transient_reader(self):
+        self.assertIn('id="editor-highlight"', self.html)
+        self.assertIn('id="reader"', self.html)
+        self.assertIn('id="reader-button"', self.html)
+        self.assertIn('function renderOrgDocument', self.js)
+        self.assertIn('function highlightOrgSource', self.js)
+        self.assertIn('readerMode = false', self.js)
+
+    def test_org_share_extension_follows_note_mode(self):
+        self.assertIn('const extension = syntax === "org" ? "org" : "txt"', self.js)
+        self.assertIn('safeFilename(activeNote.text, activeNote.syntax)', self.js)
+
+    def test_org_reader_is_safe_and_noninteractive(self):
+        self.assertIn('function escapeHtml', self.js)
+        self.assertIn('safeLinkHref', self.js)
+        self.assertNotIn('type="checkbox"', self.js)
+
+    def test_org_title_keyword_names_note_and_export(self):
+        self.assertIn('const orgTitle = text.match(/^#\\+title:\\s*(.+)$/im)', self.js)
+        self.assertIn('if (orgTitle) return orgTitle[1].trim()', self.js)
+
+    def test_org_renderer_protects_every_generated_inline_fragment(self):
+        start = self.js.index("function renderOrgInline")
+        end = self.js.index("function highlightOrgInline", start)
+        renderer = self.js[start:end]
+        self.assertIn("protect(`<${tag}>${content}</${tag}>`)", renderer)
+
+    def test_org_highlighter_protects_generated_markup(self):
+        start = self.js.index("function highlightOrgInline")
+        end = self.js.index("function highlightOrgSource", start)
+        highlighter = self.js[start:end]
+        self.assertIn("const protectedParts", highlighter)
+        self.assertIn("const protect", highlighter)
+
+    def test_service_worker_cache_is_advanced(self):
+        sw = (ROOT / "scratch" / "sw.js").read_text()
+        self.assertIn('scratch-shell-v8', sw)
+
 
 if __name__ == "__main__":
     unittest.main()

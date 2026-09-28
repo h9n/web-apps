@@ -47,12 +47,17 @@
         <button id="back-button" class="text-button" type="button">‹ Notes</button>
         <span id="save-status" class="save-status" role="status">Saved</span>
         <div class="editor-actions">
+          <button id="reader-button" class="text-button" type="button" hidden>Read</button>
           <button id="share-button" class="text-button action-symbol" type="button" aria-label="Share note">↥</button>
           <button id="editor-settings-button" class="text-button" type="button" aria-label="Typography settings">Aa</button>
           <button id="delete-button" class="text-button danger" type="button" aria-label="Delete note">×</button>
         </div>
       </header>
-      <textarea id="editor" aria-label="Note text" autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" placeholder="Start typing…"></textarea>
+      <div id="editor-stage">
+        <pre id="editor-highlight" aria-hidden="true"></pre>
+        <textarea id="editor" aria-label="Note text" autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" placeholder="Start typing…"></textarea>
+      </div>
+      <article id="reader" aria-label="Rendered note" hidden></article>
     </section>
   </main>
 
@@ -92,6 +97,16 @@
         </span>
         <label class="switch">
           <input id="typing-toggle" type="checkbox">
+          <span aria-hidden="true"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <span>
+          Org syntax
+          <small>Colour source and enable a rendered reading view</small>
+        </span>
+        <label class="switch">
+          <input id="org-toggle" type="checkbox">
           <span aria-hidden="true"></span>
         </label>
       </div>
