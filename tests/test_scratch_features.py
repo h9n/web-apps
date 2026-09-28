@@ -16,6 +16,13 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertIn("font-size: 18px; line-height: 1.1", self.css)
         self.assertIn("font-size: 14px; line-height: 1.1", self.css)
 
+    def test_stash_network_requests_have_a_timeout(self):
+        self.assertIn("async function fetchWithTimeout", self.js)
+        self.assertIn("AbortController", self.js)
+        self.assertIn("STASH_FETCH_TIMEOUT_MS", self.js)
+        self.assertIn("fetchWithTimeout(`${baseUrl}/v1/health`", self.js)
+        self.assertIn("fetchWithTimeout(stashObjectUrl()", self.js)
+
     def test_stash_setup_and_status_controls_exist(self):
         for control in ("stash-url", "stash-device", "stash-save-button", "stash-backup-button", "stash-status"):
             self.assertIn(f'id="{control}"', self.html)
@@ -27,8 +34,8 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertNotIn("stashConfig,\n    settings", self.js)
 
     def test_stash_health_upload_and_opportunistic_triggers_exist(self):
-        self.assertIn('fetch(`${baseUrl}/v1/health`', self.js)
-        self.assertIn('fetch(stashObjectUrl()', self.js)
+        self.assertIn('fetchWithTimeout(`${baseUrl}/v1/health`', self.js)
+        self.assertIn('fetchWithTimeout(stashObjectUrl()', self.js)
         self.assertIn('window.addEventListener("online"', self.js)
         self.assertIn('document.visibilityState === "visible"', self.js)
         self.assertIn("const STASH_BACKUP_INTERVAL_MS", self.js)
@@ -125,7 +132,7 @@ class ScratchFeatureTests(unittest.TestCase):
 
     def test_service_worker_cache_is_advanced(self):
         sw = (ROOT / "scratch" / "sw.js").read_text()
-        self.assertIn('scratch-shell-v10', sw)
+        self.assertIn('scratch-shell-v11', sw)
 
 
 if __name__ == "__main__":

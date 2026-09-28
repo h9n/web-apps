@@ -9,6 +9,7 @@ const IDLE_SAVE_MS = 1200;
 const MAX_SAVE_MS = 5000;
 const STASH_BACKUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const STASH_BACKUP_DELAY_MS = 30 * 1000;
+const STASH_FETCH_TIMEOUT_MS = 12000;
 const DEFAULT_SETTINGS = {
   size: "large",
   font: "sans",
@@ -552,6 +553,19 @@ function stashObjectUrl() {
   return `${stashConfig.baseUrl}/v1/scratch/${encodeURIComponent(stashConfig.device)}/backup`;
 }
 
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), STASH_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("Stash did not respond within 12 seconds.");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function renderStashStatus() {
   stashUrlInput.value = stashConfig.baseUrl;
   stashDeviceInput.value = stashConfig.device;
@@ -577,7 +591,7 @@ async function testAndSaveStash() {
     const baseUrl = normalizeStashUrl(stashUrlInput.value);
     const device = stashDeviceInput.value.trim();
     if (!validStashDevice(device)) throw new Error("Use letters, numbers, dots, underscores or hyphens for the device name.");
-    const response = await fetch(`${baseUrl}/v1/health`, { cache: "no-store" });
+    const response = await fetchWithTimeout(`${baseUrl}/v1/health`, { cache: "no-store" });
     if (!response.ok) throw new Error(`Stash returned HTTP ${response.status}.`);
     const health = await response.json();
     if (health?.service !== "stash" || health?.status !== "ok") throw new Error("That address did not identify itself as Stash.");
@@ -613,7 +627,7 @@ async function backupToStash(force = false) {
       saveStashConfig();
       return true;
     }
-    const response = await fetch(stashObjectUrl(), {
+    const response = await fetchWithTimeout(stashObjectUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body
