@@ -21,15 +21,24 @@
         <h1 id="app-title">Scratch</h1>
         <div class="topbar-actions">
           <button id="settings-button" type="button" hidden aria-hidden="true" tabindex="-1">Aa</button>
+          <button id="data-button" class="text-button" type="button">Data</button>
           <button id="new-note-button" class="icon-button primary" type="button" aria-label="New note">＋</button>
         </div>
       </header>
+
+      <div class="list-controls">
+        <span>Newest by</span>
+        <div class="segmented compact" role="group" aria-label="Sort notes">
+          <button type="button" data-setting="sort" data-value="modified">Modified</button>
+          <button type="button" data-setting="sort" data-value="created">Created</button>
+        </div>
+      </div>
 
       <div id="empty-state" class="empty-state" hidden>
         <p>Nothing here.</p>
         <button id="empty-new-button" type="button">Make a note</button>
       </div>
-      <ol id="notes-list" class="notes-list" aria-label="Notes, most recently edited first"></ol>
+      <ol id="notes-list" class="notes-list" aria-label="Notes, newest first"></ol>
     </section>
 
     <section id="editor-view" class="view editor-view" aria-label="Note editor" hidden>
@@ -37,8 +46,9 @@
         <button id="back-button" class="text-button" type="button">‹ Notes</button>
         <span id="save-status" class="save-status" role="status">Saved</span>
         <div class="editor-actions">
-          <button id="editor-settings-button" class="text-button" type="button" aria-label="Typography and data settings">Aa</button>
-          <button id="delete-button" class="text-button danger" type="button">Delete</button>
+          <button id="share-button" class="text-button action-symbol" type="button" aria-label="Share note">↥</button>
+          <button id="editor-settings-button" class="text-button" type="button" aria-label="Typography settings">Aa</button>
+          <button id="delete-button" class="text-button danger" type="button" aria-label="Delete note">×</button>
         </div>
       </header>
       <textarea id="editor" aria-label="Note text" autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" placeholder="Start typing…"></textarea>
@@ -48,13 +58,14 @@
   <dialog id="settings-dialog">
     <form method="dialog" class="settings-sheet">
       <header class="sheet-header">
-        <h2>Display</h2>
+        <h2>Writing</h2>
         <button class="text-button" value="close" aria-label="Close settings">Done</button>
       </header>
 
       <div class="setting-row">
         <span>Text size</span>
         <div class="segmented" role="group" aria-label="Text size">
+          <button type="button" data-setting="size" data-value="xsmall">XS</button>
           <button type="button" data-setting="size" data-value="small">Small</button>
           <button type="button" data-setting="size" data-value="large">Big</button>
         </div>
@@ -73,9 +84,27 @@
           <span aria-hidden="true"></span>
         </label>
       </div>
+      <div class="setting-row">
+        <span>
+          Typing assistance
+          <small>Capitalisation, correction and spellcheck</small>
+        </span>
+        <label class="switch">
+          <input id="typing-toggle" type="checkbox">
+          <span aria-hidden="true"></span>
+        </label>
+      </div>
+    </form>
+  </dialog>
 
+  <dialog id="data-dialog">
+    <form method="dialog" class="settings-sheet">
+      <header class="sheet-header">
+        <h2>Local data</h2>
+        <button class="text-button" value="close" aria-label="Close data panel">Done</button>
+      </header>
       <section class="data-section" aria-labelledby="data-heading">
-        <h3 id="data-heading">Local data</h3>
+        <h3 id="data-heading">Backup</h3>
         <p id="storage-status">Checking storage…</p>
         <button id="export-button" class="wide-button" type="button">Export backup</button>
         <button id="import-button" class="wide-button" type="button">Import backup</button>

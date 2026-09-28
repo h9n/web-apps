@@ -4,7 +4,15 @@ const DB_NAME = "scratch-notes";
 const DB_VERSION = 1;
 const NOTES_STORE = "notes";
 const SETTINGS_KEY = "scratch-settings-v1";
-const DEFAULT_SETTINGS = { size: "large", font: "sans", wrap: true };
+const IDLE_SAVE_MS = 1200;
+const MAX_SAVE_MS = 5000;
+const DEFAULT_SETTINGS = {
+  size: "large",
+  font: "sans",
+  wrap: true,
+  typing: true,
+  sort: "modified"
+};
 
 const $ = selector => document.querySelector(selector);
 const listView = $("#list-view");
@@ -14,14 +22,19 @@ const emptyState = $("#empty-state");
 const editor = $("#editor");
 const saveStatus = $("#save-status");
 const settingsDialog = $("#settings-dialog");
+const dataDialog = $("#data-dialog");
 const wrapToggle = $("#wrap-toggle");
+const typingToggle = $("#typing-toggle");
 const storageStatus = $("#storage-status");
 const importInput = $("#import-input");
 
 let db;
 let notes = [];
 let activeNote = null;
-let saveTimer = null;
+let dirty = false;
+let editRevision = 0;
+let idleSaveTimer = null;
+let maxSaveTimer = null;
 let settings = loadSettings();
 
 function loadSettings() {
@@ -34,9 +47,15 @@ function loadSettings() {
 
 function applySettings() {
   document.body.classList.toggle("size-small", settings.size === "small");
+  document.body.classList.toggle("size-xsmall", settings.size === "xsmall");
   document.body.classList.toggle("font-mono", settings.font === "mono");
   document.body.classList.toggle("no-wrap", !settings.wrap);
   wrapToggle.checked = settings.wrap;
+  typingToggle.checked = settings.typing;
+  editor.setAttribute("autocorrect", settings.typing ? "on" : "off");
+  editor.setAttribute("autocapitalize", settings.typing ? "sentences" : "none");
+  editor.spellcheck = settings.typing;
+  notesList.setAttribute("aria-label", `Notes, newest by ${settings.sort}`);
   document.querySelectorAll("[data-setting]").forEach(button => {
     button.classList.toggle("active", settings[button.dataset.setting] === button.dataset.value);
   });
@@ -46,6 +65,10 @@ function updateSetting(key, value) {
   settings[key] = value;
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   applySettings();
+  if (key === "sort") {
+    sortNotes();
+    renderNotes();
+  }
 }
 
 function openDatabase() {
@@ -82,7 +105,8 @@ async function loadNotes() {
 }
 
 function sortNotes() {
-  notes.sort((a, b) => b.updatedAt - a.updatedAt);
+  const field = settings.sort === "created" ? "createdAt" : "updatedAt";
+  notes.sort((a, b) => b[field] - a[field]);
 }
 
 function noteHeading(text) {
@@ -92,6 +116,15 @@ function noteHeading(text) {
 function notePreview(text) {
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   return lines.slice(1).join(" ") || "No additional text";
+}
+
+function safeFilename(text) {
+  const cleaned = noteHeading(text)
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+  return `${cleaned || "Untitled"}.txt`;
 }
 
 function formatDate(timestamp) {
@@ -110,6 +143,8 @@ function renderNotes() {
   notesList.replaceChildren();
   emptyState.hidden = notes.length !== 0;
   notesList.hidden = notes.length === 0;
+  const dateField = settings.sort === "created" ? "createdAt" : "updatedAt";
+  const dateLabel = settings.sort === "created" ? "Created" : "Edited";
 
   for (const note of notes) {
     const row = document.createElement("li");
@@ -127,7 +162,7 @@ function renderNotes() {
     meta.className = "note-meta";
     const date = document.createElement("span");
     date.className = "note-date";
-    date.textContent = formatDate(note.updatedAt);
+    date.textContent = `${dateLabel} ${formatDate(note[dateField])}`;
     const preview = document.createElement("span");
     preview.className = "note-preview";
     preview.textContent = notePreview(note.text);
@@ -154,12 +189,17 @@ async function createNote() {
 function openNote(id) {
   activeNote = notes.find(note => note.id === id) || null;
   if (!activeNote) return;
+  clearSaveTimers();
+  dirty = false;
+  editRevision += 1;
   editor.value = activeNote.text;
   listView.hidden = true;
   editorView.hidden = false;
   saveStatus.textContent = "Saved";
   history.pushState({ noteId: id }, "", `#${encodeURIComponent(id)}`);
+  syncVisualViewport();
   requestAnimationFrame(() => {
+    window.scrollTo(0, 0);
     editor.focus();
     editor.setSelectionRange(editor.value.length, editor.value.length);
   });
@@ -171,41 +211,68 @@ async function closeEditor({ fromHistory = false } = {}) {
   activeNote = null;
   editorView.hidden = true;
   listView.hidden = false;
+  sortNotes();
   renderNotes();
   if (!fromHistory && location.hash) history.pushState({}, "", location.pathname + location.search);
+}
+
+function clearSaveTimers() {
+  clearTimeout(idleSaveTimer);
+  clearTimeout(maxSaveTimer);
+  idleSaveTimer = null;
+  maxSaveTimer = null;
+}
+
+function scheduleSave() {
+  clearTimeout(idleSaveTimer);
+  idleSaveTimer = setTimeout(() => saveActiveNote(), IDLE_SAVE_MS);
+  if (!maxSaveTimer) maxSaveTimer = setTimeout(() => saveActiveNote(), MAX_SAVE_MS);
 }
 
 function queueSave() {
   if (!activeNote) return;
   activeNote.text = editor.value;
   activeNote.updatedAt = Date.now();
-  saveStatus.textContent = "Saving…";
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveActiveNote(), 300);
+  dirty = true;
+  editRevision += 1;
+  saveStatus.textContent = "Unsaved";
+  scheduleSave();
 }
 
 async function saveActiveNote() {
-  clearTimeout(saveTimer);
-  saveTimer = null;
-  if (!activeNote) return;
+  clearSaveTimers();
+  if (!activeNote || !dirty || !db) return;
+  const revisionBeingSaved = editRevision;
   const note = { ...activeNote };
-  await transact("readwrite", store => store.put(note));
-  const index = notes.findIndex(item => item.id === note.id);
-  if (index >= 0) notes[index] = note;
-  sortNotes();
-  saveStatus.textContent = "Saved";
+  saveStatus.textContent = "Saving…";
+  try {
+    await transact("readwrite", store => store.put(note));
+    const index = notes.findIndex(item => item.id === note.id);
+    if (index >= 0) notes[index] = note;
+    if (revisionBeingSaved === editRevision) {
+      dirty = false;
+      saveStatus.textContent = "Saved";
+    } else {
+      saveStatus.textContent = "Unsaved";
+      scheduleSave();
+    }
+  } catch (error) {
+    console.error("Could not save note", error);
+    saveStatus.textContent = "Save failed";
+    dirty = true;
+  }
 }
 
 async function flushSave() {
-  if (saveTimer) await saveActiveNote();
+  if (dirty) await saveActiveNote();
 }
 
 async function removeNote(id, ask = true) {
   const note = notes.find(item => item.id === id);
   if (!note) return;
   if (ask && !confirm(`Delete “${noteHeading(note.text)}”?`)) return;
-  clearTimeout(saveTimer);
-  saveTimer = null;
+  clearSaveTimers();
+  dirty = false;
   await transact("readwrite", store => store.delete(id));
   notes = notes.filter(item => item.id !== id);
   if (activeNote?.id === id) {
@@ -215,6 +282,31 @@ async function removeNote(id, ask = true) {
     history.pushState({}, "", location.pathname + location.search);
   }
   renderNotes();
+}
+
+async function shareActiveNote() {
+  if (!activeNote) return;
+  await flushSave();
+  const title = noteHeading(activeNote.text);
+  const file = new File([activeNote.text], safeFilename(activeNote.text), { type: "text/plain" });
+  try {
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title });
+      return;
+    }
+    if (navigator.share) {
+      await navigator.share({ title, text: activeNote.text });
+      return;
+    }
+    await navigator.clipboard.writeText(activeNote.text);
+    saveStatus.textContent = "Copied";
+    setTimeout(() => { if (!dirty) saveStatus.textContent = "Saved"; }, 1200);
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      console.error("Could not share note", error);
+      alert("This browser could not open the share sheet or copy the note.");
+    }
+  }
 }
 
 async function exportBackup() {
@@ -285,26 +377,41 @@ async function updateStorageStatus(requestPersistence = false) {
   }
 }
 
+function syncVisualViewport() {
+  const viewport = window.visualViewport;
+  const height = viewport?.height || window.innerHeight;
+  const top = viewport?.offsetTop || 0;
+  document.documentElement.style.setProperty("--visual-height", `${height}px`);
+  document.documentElement.style.setProperty("--visual-top", `${top}px`);
+}
+
 function wireEvents() {
   $("#new-note-button").addEventListener("click", createNote);
   $("#empty-new-button").addEventListener("click", createNote);
   $("#back-button").addEventListener("click", () => closeEditor());
   $("#delete-button").addEventListener("click", () => activeNote && removeNote(activeNote.id));
+  $("#share-button").addEventListener("click", shareActiveNote);
   editor.addEventListener("input", queueSave);
+  editor.addEventListener("blur", () => { if (dirty) saveActiveNote(); });
   notesList.addEventListener("click", event => {
     const button = event.target.closest(".note-button");
     if (button) openNote(button.dataset.id);
   });
+
   const openSettings = () => {
     applySettings();
     settingsDialog.showModal();
-    updateStorageStatus(true);
   };
   $("#editor-settings-button").addEventListener("click", openSettings);
+  $("#data-button").addEventListener("click", () => {
+    dataDialog.showModal();
+    updateStorageStatus(true);
+  });
   document.querySelectorAll("[data-setting]").forEach(button => {
     button.addEventListener("click", () => updateSetting(button.dataset.setting, button.dataset.value));
   });
   wrapToggle.addEventListener("change", () => updateSetting("wrap", wrapToggle.checked));
+  typingToggle.addEventListener("change", () => updateSetting("typing", typingToggle.checked));
   $("#export-button").addEventListener("click", exportBackup);
   $("#import-button").addEventListener("click", () => importInput.click());
   importInput.addEventListener("change", async () => {
@@ -312,12 +419,21 @@ function wireEvents() {
     if (file) await importBackup(file);
     importInput.value = "";
   });
-  window.addEventListener("pagehide", () => { if (saveTimer) saveActiveNote(); });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden" && dirty) saveActiveNote();
+  });
+  window.addEventListener("pagehide", () => { if (dirty) saveActiveNote(); });
   window.addEventListener("popstate", () => { if (!editorView.hidden) closeEditor({ fromHistory: true }); });
+  window.addEventListener("resize", syncVisualViewport);
+  window.addEventListener("orientationchange", syncVisualViewport);
+  window.visualViewport?.addEventListener("resize", syncVisualViewport);
+  window.visualViewport?.addEventListener("scroll", syncVisualViewport);
 }
 
 async function start() {
   applySettings();
+  syncVisualViewport();
   wireEvents();
   try {
     db = await openDatabase();

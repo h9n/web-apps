@@ -4,7 +4,7 @@ Small, dependency-free web applications hosted at `apps.octofi.sh`.
 
 ## Applications
 
-- [`/scratch/`](scratch/) — a local-only plain-text notebook. Notes are stored in the browser with IndexedDB and are never committed to this repository or sent to the server.
+- [`/scratch/`](scratch/) — a local-only plain-text notebook with installable offline support, configurable typography and typing assistance, native sharing, sorting, and JSON backup. Notes are stored in the browser with IndexedDB and are never committed to this repository or sent to the server.
 
 ## Structure
 
