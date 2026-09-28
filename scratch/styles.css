@@ -150,7 +150,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   caret-color: var(--system-blue);
   accent-color: var(--system-blue);
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-  font-size: 30px;
+  font-size: 24px;
   line-height: 1.18;
   font-weight: 800;
   letter-spacing: 0;

@@ -11,6 +11,10 @@ class ScratchFeatureTests(unittest.TestCase):
         cls.css = (ROOT / "scratch" / "styles.css").read_text()
         cls.js = (ROOT / "scratch" / "app.js").read_text()
 
+    def test_large_editor_size_is_restrained(self):
+        self.assertIn("font-size: 24px", self.css)
+        self.assertNotIn("font-size: 30px", self.css)
+
     def test_editor_controls_exist(self):
         self.assertIn('data-value="xsmall"', self.html)
         self.assertIn('id="typing-toggle"', self.html)
@@ -99,7 +103,7 @@ class ScratchFeatureTests(unittest.TestCase):
 
     def test_service_worker_cache_is_advanced(self):
         sw = (ROOT / "scratch" / "sw.js").read_text()
-        self.assertIn('scratch-shell-v8', sw)
+        self.assertIn('scratch-shell-v9', sw)
 
 
 if __name__ == "__main__":
