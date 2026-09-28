@@ -36,6 +36,7 @@ let editRevision = 0;
 let idleSaveTimer = null;
 let maxSaveTimer = null;
 let settings = loadSettings();
+const viewportBaselines = { portrait: 0, landscape: 0 };
 
 function loadSettings() {
   try {
@@ -144,7 +145,6 @@ function renderNotes() {
   emptyState.hidden = notes.length !== 0;
   notesList.hidden = notes.length === 0;
   const dateField = settings.sort === "created" ? "createdAt" : "updatedAt";
-  const dateLabel = settings.sort === "created" ? "Created" : "Edited";
 
   for (const note of notes) {
     const row = document.createElement("li");
@@ -162,7 +162,7 @@ function renderNotes() {
     meta.className = "note-meta";
     const date = document.createElement("span");
     date.className = "note-date";
-    date.textContent = `${dateLabel} ${formatDate(note[dateField])}`;
+    date.textContent = formatDate(note[dateField]);
     const preview = document.createElement("span");
     preview.className = "note-preview";
     preview.textContent = notePreview(note.text);
@@ -381,6 +381,15 @@ function syncVisualViewport() {
   const viewport = window.visualViewport;
   const height = viewport?.height || window.innerHeight;
   const top = viewport?.offsetTop || 0;
+  const orientation = window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait";
+  const editorFocused = document.activeElement === editor;
+  if (!editorFocused || height > viewportBaselines[orientation]) {
+    viewportBaselines[orientation] = height;
+  }
+  const keyboardReduction = viewportBaselines[orientation] - height;
+  const keyboardVisible = keyboardReduction > 120 || height < 320;
+  const hideBar = editorFocused && orientation === "landscape" && keyboardVisible;
+  document.body.classList.toggle("landscape-keyboard", hideBar);
   document.documentElement.style.setProperty("--visual-height", `${height}px`);
   document.documentElement.style.setProperty("--visual-top", `${top}px`);
 }
@@ -392,7 +401,11 @@ function wireEvents() {
   $("#delete-button").addEventListener("click", () => activeNote && removeNote(activeNote.id));
   $("#share-button").addEventListener("click", shareActiveNote);
   editor.addEventListener("input", queueSave);
-  editor.addEventListener("blur", () => { if (dirty) saveActiveNote(); });
+  editor.addEventListener("focus", syncVisualViewport);
+  editor.addEventListener("blur", () => {
+    if (dirty) saveActiveNote();
+    setTimeout(syncVisualViewport, 0);
+  });
   notesList.addEventListener("click", event => {
     const button = event.target.closest(".note-button");
     if (button) openNote(button.dataset.id);

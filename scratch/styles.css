@@ -1,5 +1,5 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light dark;
   --bg: #000;
   --ink: #fff;
   --muted: #929292;
@@ -8,6 +8,11 @@
   --line: #303030;
   --danger: #ff6961;
   --system-blue: #0a84ff;
+  --topbar: rgba(0, 0, 0, .96);
+  --placeholder: #505050;
+  --segment-bg: #080808;
+  --backdrop: rgba(0, 0, 0, .72);
+  --selection: rgba(10, 132, 255, .42);
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -43,7 +48,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   position: sticky;
   top: 0;
   z-index: 4;
-  background: rgba(0, 0, 0, .96);
+  background: var(--topbar);
   border-bottom: 1px solid var(--line);
 }
 .topbar h1 { margin: 0; font-size: 34px; line-height: 1; letter-spacing: 0; }
@@ -144,8 +149,8 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
-#editor::selection { background: rgba(10, 132, 255, .42); }
-#editor::placeholder { color: #505050; }
+#editor::selection { background: var(--selection); }
+#editor::placeholder { color: var(--placeholder); }
 body.size-small #editor { font-size: 18px; line-height: 1.4; font-weight: 500; }
 body.size-xsmall #editor { font-size: 14px; line-height: 1.35; font-weight: 450; }
 body.font-mono #editor { font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace; }
@@ -162,13 +167,13 @@ body.no-wrap #editor { white-space: pre; overflow-wrap: normal; overflow-x: auto
   background: var(--surface);
   color: var(--ink);
 }
-#settings-dialog::backdrop, #data-dialog::backdrop { background: rgba(0, 0, 0, .72); }
+#settings-dialog::backdrop, #data-dialog::backdrop { background: var(--backdrop); }
 .settings-sheet { padding: 0 calc(20px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(20px + var(--safe-left)); }
 .sheet-header { min-height: 68px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .sheet-header h2 { margin: 0; font-size: 22px; }
 .setting-row { min-height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); font-weight: 700; }
 .setting-row small { display: block; max-width: 220px; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.25; font-weight: 500; }
-.segmented { display: flex; flex: 0 0 auto; padding: 3px; border-radius: 10px; background: #080808; }
+.segmented { display: flex; flex: 0 0 auto; padding: 3px; border-radius: 10px; background: var(--segment-bg); }
 .segmented button { min-height: 36px; border: 0; border-radius: 8px; padding: 0 11px; background: transparent; color: var(--muted); font-weight: 750; }
 .segmented button.active { background: var(--ink); color: var(--bg); }
 .segmented.compact button { min-height: 30px; padding: 0 10px; font-size: 12px; }
@@ -182,6 +187,26 @@ body.no-wrap #editor { white-space: pre; overflow-wrap: normal; overflow-x: auto
 .data-section h3 { margin: 0 0 6px; font-size: 17px; }
 .data-section p { margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.4; }
 .wide-button { width: 100%; margin-top: 10px; }
+
+body.landscape-keyboard .editor-bar { display: none; }
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #fff;
+    --ink: #000;
+    --muted: #686868;
+    --surface: #f2f2f7;
+    --surface-2: #e9e9ee;
+    --line: #d8d8dc;
+    --danger: #ff3b30;
+    --system-blue: #007aff;
+    --topbar: rgba(255, 255, 255, .96);
+    --placeholder: #aaa;
+    --segment-bg: #e9e9ee;
+    --backdrop: rgba(0, 0, 0, .28);
+    --selection: rgba(0, 122, 255, .28);
+  }
+}
 
 @media (min-width: 700px) {
   body { max-width: 700px; margin: 0 auto; }

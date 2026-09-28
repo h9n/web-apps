@@ -45,6 +45,19 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertNotIn("border-left: 1px solid var(--line)", self.css)
         self.assertNotIn("border-right: 1px solid var(--line)", self.css)
 
+    def test_light_mode_follows_os(self):
+        self.assertIn("@media (prefers-color-scheme: light)", self.css)
+        self.assertIn('media="(prefers-color-scheme: light)"', self.html)
+        self.assertIn('media="(prefers-color-scheme: dark)"', self.html)
+
+    def test_landscape_keyboard_hides_editor_bar(self):
+        self.assertIn('classList.toggle("landscape-keyboard"', self.js)
+        self.assertIn("body.landscape-keyboard .editor-bar", self.css)
+
+    def test_note_dates_do_not_repeat_sort_mode(self):
+        self.assertNotIn('const dateLabel = settings.sort', self.js)
+        self.assertNotIn('`${dateLabel} ${formatDate(note[dateField])}`', self.js)
+
 
 if __name__ == "__main__":
     unittest.main()

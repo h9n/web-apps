@@ -1,4 +1,4 @@
-const CACHE = "scratch-shell-v6";
+const CACHE = "scratch-shell-v7";
 const SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-512-maskable.png"];
 
 self.addEventListener("install", event => {
