@@ -151,7 +151,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   accent-color: var(--system-blue);
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
   font-size: 24px;
-  line-height: 1.18;
+  line-height: 1.1;
   font-weight: 800;
   letter-spacing: 0;
   tab-size: 4;
@@ -183,8 +183,8 @@ body.org-editing #editor::placeholder { -webkit-text-fill-color: var(--placehold
 .org-meta, .org-comment { color: var(--org-meta); }
 #editor::selection { background: var(--selection); }
 #editor::placeholder { color: var(--placeholder); }
-body.size-small :is(#editor, #editor-highlight) { font-size: 18px; line-height: 1.4; font-weight: 500; }
-body.size-xsmall :is(#editor, #editor-highlight) { font-size: 14px; line-height: 1.35; font-weight: 450; }
+body.size-small :is(#editor, #editor-highlight) { font-size: 18px; line-height: 1.1; font-weight: 500; }
+body.size-xsmall :is(#editor, #editor-highlight) { font-size: 14px; line-height: 1.1; font-weight: 450; }
 body.font-mono :is(#editor, #editor-highlight) { font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace; }
 body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
 
@@ -238,6 +238,10 @@ body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: 
 .data-section h3 { margin: 0 0 6px; font-size: 17px; }
 .data-section p { margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.4; }
 .wide-button { width: 100%; margin-top: 10px; }
+.stash-section { margin-top: 24px; border-top: 1px solid var(--line); }
+.field-label { display: block; margin: 14px 0 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.text-field { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; background: var(--bg); color: var(--ink); font-size: 16px; }
+.wide-button:disabled { opacity: .42; }
 
 body.landscape-keyboard .editor-bar { display: none; }
 

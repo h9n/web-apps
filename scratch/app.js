@@ -4,8 +4,11 @@ const DB_NAME = "scratch-notes";
 const DB_VERSION = 1;
 const NOTES_STORE = "notes";
 const SETTINGS_KEY = "scratch-settings-v1";
+const STASH_KEY = "scratch-stash-v1";
 const IDLE_SAVE_MS = 1200;
 const MAX_SAVE_MS = 5000;
+const STASH_BACKUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const STASH_BACKUP_DELAY_MS = 30 * 1000;
 const DEFAULT_SETTINGS = {
   size: "large",
   font: "sans",
@@ -32,6 +35,11 @@ const typingToggle = $("#typing-toggle");
 const orgToggle = $("#org-toggle");
 const storageStatus = $("#storage-status");
 const importInput = $("#import-input");
+const stashStatus = $("#stash-status");
+const stashUrlInput = $("#stash-url");
+const stashDeviceInput = $("#stash-device");
+const stashSaveButton = $("#stash-save-button");
+const stashBackupButton = $("#stash-backup-button");
 
 let db;
 let notes = [];
@@ -42,6 +50,9 @@ let idleSaveTimer = null;
 let maxSaveTimer = null;
 let readerMode = false;
 let settings = loadSettings();
+let stashConfig = loadStashConfig();
+let stashBackupTimer = null;
+let stashBackupRunning = false;
 const viewportBaselines = { portrait: 0, landscape: 0 };
 
 function loadSettings() {
@@ -50,6 +61,19 @@ function loadSettings() {
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
+}
+
+function loadStashConfig() {
+  const defaults = { enabled: false, baseUrl: "", device: "", lastSuccess: 0, lastHash: "", lastError: "" };
+  try {
+    return { ...defaults, ...JSON.parse(localStorage.getItem(STASH_KEY) || "{}") };
+  } catch {
+    return defaults;
+  }
+}
+
+function saveStashConfig() {
+  localStorage.setItem(STASH_KEY, JSON.stringify(stashConfig));
 }
 
 function applySettings() {
@@ -438,6 +462,7 @@ async function saveActiveNote() {
     if (revisionBeingSaved === editRevision) {
       dirty = false;
       saveStatus.textContent = "Saved";
+      scheduleStashBackup();
     } else {
       saveStatus.textContent = "Unsaved";
       scheduleSave();
@@ -461,6 +486,7 @@ async function removeNote(id, ask = true) {
   dirty = false;
   await transact("readwrite", store => store.delete(id));
   notes = notes.filter(item => item.id !== id);
+  scheduleStashBackup();
   if (activeNote?.id === id) {
     activeNote = null;
     editorView.hidden = true;
@@ -495,15 +521,129 @@ async function shareActiveNote() {
   }
 }
 
-async function exportBackup() {
-  await flushSave();
-  const backup = {
+function makeBackupPayload() {
+  return {
     format: "scratch-backup",
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     notes,
     settings
   };
+}
+
+async function sha256(text) {
+  const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("");
+}
+
+function normalizeStashUrl(value) {
+  const url = new URL(value.trim());
+  if (url.protocol !== "https:") throw new Error("Stash must use an HTTPS address.");
+  if (url.username || url.password) throw new Error("Do not put credentials in the Stash address.");
+  return url.href.replace(/\/+$/, "");
+}
+
+function validStashDevice(value) {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value);
+}
+
+function stashObjectUrl() {
+  return `${stashConfig.baseUrl}/v1/scratch/${encodeURIComponent(stashConfig.device)}/backup`;
+}
+
+function renderStashStatus() {
+  stashUrlInput.value = stashConfig.baseUrl;
+  stashDeviceInput.value = stashConfig.device;
+  stashBackupButton.disabled = !stashConfig.enabled || stashBackupRunning;
+  if (!stashConfig.enabled) {
+    stashStatus.textContent = "Not configured. Backups remain local until Stash is set up.";
+  } else if (stashBackupRunning) {
+    stashStatus.textContent = `Backing up ${notes.length} note${notes.length === 1 ? "" : "s"} as ${stashConfig.device}…`;
+  } else if (stashConfig.lastError) {
+    stashStatus.textContent = `Backup pending: ${stashConfig.lastError}`;
+  } else if (stashConfig.lastSuccess) {
+    stashStatus.textContent = `Last backed up ${formatDate(stashConfig.lastSuccess)} as ${stashConfig.device}.`;
+  } else {
+    stashStatus.textContent = `Connected as ${stashConfig.device}. No backup uploaded yet.`;
+  }
+}
+
+async function testAndSaveStash() {
+  stashSaveButton.disabled = true;
+  stashStatus.textContent = "Testing Stash…";
+  let configured = false;
+  try {
+    const baseUrl = normalizeStashUrl(stashUrlInput.value);
+    const device = stashDeviceInput.value.trim();
+    if (!validStashDevice(device)) throw new Error("Use letters, numbers, dots, underscores or hyphens for the device name.");
+    const response = await fetch(`${baseUrl}/v1/health`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Stash returned HTTP ${response.status}.`);
+    const health = await response.json();
+    if (health?.service !== "stash" || health?.status !== "ok") throw new Error("That address did not identify itself as Stash.");
+    const changedDestination = baseUrl !== stashConfig.baseUrl || device !== stashConfig.device;
+    stashConfig = { ...stashConfig, enabled: true, baseUrl, device, lastError: "" };
+    if (changedDestination) Object.assign(stashConfig, { lastSuccess: 0, lastHash: "" });
+    saveStashConfig();
+    renderStashStatus();
+    configured = true;
+    await backupToStash(true);
+  } catch (error) {
+    stashStatus.textContent = error.message || "Could not connect to Stash.";
+  } finally {
+    stashSaveButton.disabled = false;
+    if (configured) renderStashStatus();
+  }
+}
+
+async function backupToStash(force = false) {
+  if (!stashConfig.enabled || stashBackupRunning || !navigator.onLine) return false;
+  if (!force && Date.now() - stashConfig.lastSuccess < STASH_BACKUP_INTERVAL_MS) return false;
+  stashBackupRunning = true;
+  stashConfig.lastError = "";
+  renderStashStatus();
+  try {
+    await flushSave();
+    const payload = makeBackupPayload();
+    const body = JSON.stringify(payload);
+    const hash = await sha256(JSON.stringify({ notes, settings }));
+    if (!force && hash === stashConfig.lastHash) {
+      stashConfig.lastSuccess = Date.now();
+      stashConfig.lastError = "";
+      saveStashConfig();
+      return true;
+    }
+    const response = await fetch(stashObjectUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body
+    });
+    if (!response.ok) throw new Error(`Stash returned HTTP ${response.status}.`);
+    await response.json();
+    stashConfig.lastSuccess = Date.now();
+    stashConfig.lastHash = hash;
+    stashConfig.lastError = "";
+    saveStashConfig();
+    return true;
+  } catch (error) {
+    stashConfig.lastError = error.message || "Waschbär could not be reached.";
+    saveStashConfig();
+    return false;
+  } finally {
+    stashBackupRunning = false;
+    renderStashStatus();
+  }
+}
+
+function scheduleStashBackup(delay = STASH_BACKUP_DELAY_MS) {
+  if (!stashConfig.enabled) return;
+  clearTimeout(stashBackupTimer);
+  stashBackupTimer = setTimeout(() => backupToStash(false), delay);
+}
+
+async function exportBackup() {
+  await flushSave();
+  const backup = makeBackupPayload();
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -543,6 +683,7 @@ async function importBackup(file) {
     applySettings();
   }
   await loadNotes();
+  scheduleStashBackup(1000);
   alert(`Imported ${validNotes.length} note${validNotes.length === 1 ? "" : "s"}.`);
 }
 
@@ -609,6 +750,7 @@ function wireEvents() {
   $("#data-button").addEventListener("click", () => {
     dataDialog.showModal();
     updateStorageStatus(true);
+    renderStashStatus();
   });
   document.querySelectorAll("[data-setting]").forEach(button => {
     button.addEventListener("click", () => updateSetting(button.dataset.setting, button.dataset.value));
@@ -618,6 +760,8 @@ function wireEvents() {
   orgToggle.addEventListener("change", () => setOrgSyntax(orgToggle.checked));
   $("#export-button").addEventListener("click", exportBackup);
   $("#import-button").addEventListener("click", () => importInput.click());
+  stashSaveButton.addEventListener("click", testAndSaveStash);
+  stashBackupButton.addEventListener("click", () => backupToStash(true));
   importInput.addEventListener("change", async () => {
     const [file] = importInput.files;
     if (file) await importBackup(file);
@@ -626,7 +770,9 @@ function wireEvents() {
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden" && dirty) saveActiveNote();
+    if (document.visibilityState === "visible") scheduleStashBackup(1000);
   });
+  window.addEventListener("online", () => scheduleStashBackup(1000));
   window.addEventListener("pagehide", () => { if (dirty) saveActiveNote(); });
   window.addEventListener("popstate", () => { if (!editorView.hidden) closeEditor({ fromHistory: true }); });
   window.addEventListener("resize", syncVisualViewport);
@@ -637,11 +783,13 @@ function wireEvents() {
 
 async function start() {
   applySettings();
+  renderStashStatus();
   syncVisualViewport();
   wireEvents();
   try {
     db = await openDatabase();
     await loadNotes();
+    scheduleStashBackup(3000);
   } catch (error) {
     console.error(error);
     alert("Scratch could not open its local database. Notes cannot be saved in this browser session.");

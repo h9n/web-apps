@@ -11,6 +11,28 @@ class ScratchFeatureTests(unittest.TestCase):
         cls.css = (ROOT / "scratch" / "styles.css").read_text()
         cls.js = (ROOT / "scratch" / "app.js").read_text()
 
+    def test_editor_line_spacing_is_compact(self):
+        self.assertIn("font-size: 24px;\n  line-height: 1.1", self.css)
+        self.assertIn("font-size: 18px; line-height: 1.1", self.css)
+        self.assertIn("font-size: 14px; line-height: 1.1", self.css)
+
+    def test_stash_setup_and_status_controls_exist(self):
+        for control in ("stash-url", "stash-device", "stash-save-button", "stash-backup-button", "stash-status"):
+            self.assertIn(f'id="{control}"', self.html)
+
+    def test_stash_configuration_is_local_and_excluded_from_backups(self):
+        self.assertIn('const STASH_KEY = "scratch-stash-v1"', self.js)
+        self.assertIn("localStorage.getItem(STASH_KEY)", self.js)
+        self.assertIn("localStorage.setItem(STASH_KEY", self.js)
+        self.assertNotIn("stashConfig,\n    settings", self.js)
+
+    def test_stash_health_upload_and_opportunistic_triggers_exist(self):
+        self.assertIn('fetch(`${baseUrl}/v1/health`', self.js)
+        self.assertIn('fetch(stashObjectUrl()', self.js)
+        self.assertIn('window.addEventListener("online"', self.js)
+        self.assertIn('document.visibilityState === "visible"', self.js)
+        self.assertIn("const STASH_BACKUP_INTERVAL_MS", self.js)
+
     def test_large_editor_size_is_restrained(self):
         self.assertIn("font-size: 24px", self.css)
         self.assertNotIn("font-size: 30px", self.css)
@@ -103,7 +125,7 @@ class ScratchFeatureTests(unittest.TestCase):
 
     def test_service_worker_cache_is_advanced(self):
         sw = (ROOT / "scratch" / "sw.js").read_text()
-        self.assertIn('scratch-shell-v9', sw)
+        self.assertIn('scratch-shell-v10', sw)
 
 
 if __name__ == "__main__":

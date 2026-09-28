@@ -126,6 +126,16 @@
         <button id="import-button" class="wide-button" type="button">Import backup</button>
         <input id="import-input" type="file" accept="application/json,.json" hidden>
       </section>
+      <section class="data-section stash-section" aria-labelledby="stash-heading">
+        <h3 id="stash-heading">Stash</h3>
+        <p id="stash-status">Not configured. Backups remain local until Stash is set up.</p>
+        <label class="field-label" for="stash-url">Stash address</label>
+        <input id="stash-url" class="text-field" type="url" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="https://machine.tailnet.ts.net/stash">
+        <label class="field-label" for="stash-device">Device name</label>
+        <input id="stash-device" class="text-field" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="hamphone" maxlength="64">
+        <button id="stash-save-button" class="wide-button" type="button">Test and save</button>
+        <button id="stash-backup-button" class="wide-button" type="button" disabled>Back up now</button>
+      </section>
     </form>
   </dialog>
 
