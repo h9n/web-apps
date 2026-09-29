@@ -49,6 +49,10 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertIn('id="typing-toggle"', self.html)
         self.assertIn('id="share-button"', self.html)
 
+    def test_notes_list_has_its_own_bounded_touch_scroll_area(self):
+        self.assertRegex(self.css, r"(?s)#list-view\s*\{[^}]*height:\s*100dvh;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;")
+        self.assertRegex(self.css, r"(?s)\.notes-list\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;")
+
     def test_list_controls_exist(self):
         self.assertIn('id="data-button"', self.html)
         self.assertIn('data-setting="sort"', self.html)
@@ -132,7 +136,7 @@ class ScratchFeatureTests(unittest.TestCase):
 
     def test_service_worker_cache_is_advanced(self):
         sw = (ROOT / "scratch" / "sw.js").read_text()
-        self.assertIn('scratch-shell-v11', sw)
+        self.assertIn('scratch-shell-v12', sw)
 
 
 if __name__ == "__main__":

@@ -41,6 +41,13 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 
 #app, .view { min-height: 100dvh; }
 .view { background: var(--bg); }
+#list-view {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#list-view > .topbar, .list-controls { flex: 0 0 auto; }
 [hidden] { display: none !important; }
 
 .topbar {
@@ -85,7 +92,15 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   font-weight: 700;
   border-bottom: 1px solid var(--line);
 }
-.notes-list { margin: 0; padding: 0 0 var(--safe-bottom); list-style: none; }
+.notes-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0;
+  padding: 0 0 var(--safe-bottom);
+  list-style: none;
+}
 .note-row { border-bottom: 1px solid var(--line); }
 .note-button {
   display: block;
