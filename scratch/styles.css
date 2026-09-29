@@ -100,13 +100,16 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   font-size: 16px;
 }
 .icon-button.primary { background: var(--ink); color: var(--bg); font-size: 28px; font-weight: 400; }
+.search-button { display: grid; place-items: center; background: transparent; }
+.search-button svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.search-button[aria-expanded="true"] { color: var(--system-blue); }
 .text-button { min-height: 44px; border: 0; padding: 0 4px; background: transparent; font-weight: 700; }
 .text-button.danger { color: var(--danger); font-size: 25px; font-weight: 400; }
 .action-symbol { font-size: 24px; font-weight: 500; }
 
 .list-controls {
   min-height: 54px;
-  padding: 8px calc(20px + var(--safe-right)) 8px calc(20px + var(--safe-left));
+  padding: 4px calc(20px + var(--safe-right)) 4px calc(20px + var(--safe-left));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -116,25 +119,26 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   font-weight: 700;
   border-bottom: 1px solid var(--line);
 }
-.search-row {
-  flex: 0 0 auto;
-  padding: 10px calc(20px + var(--safe-right)) 10px calc(20px + var(--safe-left));
-  border-bottom: 1px solid var(--line);
-}
+.list-controls.searching .sort-label, .list-controls.searching .sort-controls { display: none; }
+#search-controls { flex: 1 1 auto; min-width: 0; align-items: center; gap: 8px; }
+#search-controls:not([hidden]) { display: flex; }
+#clear-search { flex: 0 0 44px; font-size: 26px; font-weight: 400; }
 #note-search {
   display: block;
-  width: 100%;
-  height: 42px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 38px;
   border: 0;
-  border-radius: 10px;
-  padding: 0 14px;
-  background: var(--surface-2);
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0 4px;
+  background: transparent;
   color: var(--ink);
   font: inherit;
   font-size: 16px;
-  -webkit-appearance: none;
-  appearance: none;
+  font-weight: 400;
 }
+#note-search:focus-visible { outline: none; border-bottom-color: var(--system-blue); }
 #note-search::placeholder { color: var(--muted); }
 .notes-list {
   flex: 1 1 auto;

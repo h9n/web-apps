@@ -23,6 +23,9 @@ const listView = $("#list-view");
 const editorView = $("#editor-view");
 const notesList = $("#notes-list");
 const noteSearch = $("#note-search");
+const searchButton = $("#search-button");
+const searchControls = $("#search-controls");
+const listControls = $("#list-controls");
 const emptyState = $("#empty-state");
 const emptyMessage = $("#empty-message");
 const editor = $("#editor");
@@ -343,6 +346,21 @@ function formatDate(timestamp) {
   if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
   const sameYear = date.getFullYear() === now.getFullYear();
   return new Intl.DateTimeFormat(undefined, sameYear ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" }).format(date);
+}
+
+function setSearchOpen(open) {
+  // A cached HTML shell can briefly run against newer JavaScript during a PWA update.
+  if (!searchButton || !searchControls || !listControls) return;
+  searchControls.hidden = !open;
+  listControls.classList.toggle("searching", open);
+  searchButton.setAttribute("aria-expanded", String(open));
+  if (open) {
+    noteSearch.focus();
+  } else {
+    noteSearch.value = "";
+    noteSearch.blur();
+    renderNotes();
+  }
 }
 
 function renderNotes() {
@@ -747,6 +765,12 @@ function syncVisualViewport() {
 }
 
 function wireEvents() {
+  searchButton?.addEventListener("click", () => setSearchOpen(searchControls.hidden));
+  $("#clear-search")?.addEventListener("click", () => {
+    noteSearch.value = "";
+    renderNotes();
+    noteSearch.focus();
+  });
   noteSearch.addEventListener("input", renderNotes);
   noteSearch.addEventListener("keydown", event => {
     if (event.key === "Enter") noteSearch.blur();

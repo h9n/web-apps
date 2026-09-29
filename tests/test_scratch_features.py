@@ -62,6 +62,23 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertIn('noteSearch.value = "";\n  openNote(note.id)', self.js)
         self.assertRegex(self.css, r'(?s)#list-view\s*\{[^}]*height:\s*var\(--visual-height, 100dvh\);[^}]*min-height:\s*0;')
 
+    def test_search_is_collapsed_into_existing_sort_row(self):
+        self.assertIn('id="search-button"', self.html)
+        self.assertIn('id="note-search"', self.html)
+        self.assertIn('id="search-controls"', self.html)
+        self.assertNotIn('class="search-row"', self.html)
+        self.assertIn('function setSearchOpen(open)', self.js)
+        self.assertIn('searchButton?.addEventListener("click"', self.js)
+        self.assertIn('.list-controls.searching', self.css)
+
+    def test_shell_assets_are_versioned_together(self):
+        self.assertIn('href="styles.css?v=14"', self.html)
+        self.assertIn('src="app.js?v=14"', self.html)
+        sw = (ROOT / 'scratch' / 'sw.js').read_text()
+        self.assertIn('"./styles.css?v=14"', sw)
+        self.assertIn('"./app.js?v=14"', sw)
+        self.assertIn('scratch-shell-v14', sw)
+
     def test_univers_font_options_use_real_web_faces(self):
         for value in ('univers', 'univers-black', 'univers-extended'):
             self.assertIn(f'data-value="{value}"', self.html)
@@ -76,6 +93,8 @@ class ScratchFeatureTests(unittest.TestCase):
         svg = (ROOT / 'scratch' / 'icons' / 'cursor.svg').read_text()
         self.assertIn('<path', svg)
         self.assertIn('cursor', svg.lower())
+        self.assertTrue((ROOT / 'scratch' / 'icons' / 'cursor-180.png').is_file())
+        self.assertIn('href="icons/cursor-180.png"', self.html)
         for size in (180, 192, 512):
             self.assertTrue((ROOT / 'scratch' / 'icons' / f'icon-{size}.png').is_file())
         self.assertTrue((ROOT / 'scratch' / 'icons' / 'icon-512-maskable.png').is_file())
@@ -163,7 +182,7 @@ class ScratchFeatureTests(unittest.TestCase):
 
     def test_service_worker_cache_is_advanced(self):
         sw = (ROOT / "scratch" / "sw.js").read_text()
-        self.assertIn('scratch-shell-v13', sw)
+        self.assertIn('scratch-shell-v14', sw)
         for filename in ('U.woff2', 'U-Black.woff2', 'U-ExtraBlackExt.woff2'):
             self.assertIn(f'fonts/{filename}', sw)
 

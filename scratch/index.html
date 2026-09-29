@@ -11,8 +11,8 @@
   <meta name="apple-mobile-web-app-title" content="Scratch">
   <meta name="description" content="A private, local-only plain-text scratchpad.">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="apple-touch-icon" href="icons/cursor-180.png">
+  <link rel="stylesheet" href="styles.css?v=14">
   <title>Scratch</title>
 </head>
 <body>
@@ -23,20 +23,21 @@
         <div class="topbar-actions">
           <button id="settings-button" type="button" hidden aria-hidden="true" tabindex="-1">Aa</button>
           <button id="data-button" class="text-button" type="button">Data</button>
+          <button id="search-button" class="icon-button search-button" type="button" aria-label="Search notes" aria-expanded="false" aria-controls="search-controls"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></button>
           <button id="new-note-button" class="icon-button primary" type="button" aria-label="New note">＋</button>
         </div>
       </header>
 
-      <div class="list-controls">
-        <span>Newest by</span>
-        <div class="segmented compact" role="group" aria-label="Sort notes">
+      <div id="list-controls" class="list-controls">
+        <span class="sort-label">Newest by</span>
+        <div class="segmented compact sort-controls" role="group" aria-label="Sort notes">
           <button type="button" data-setting="sort" data-value="modified">Modified</button>
           <button type="button" data-setting="sort" data-value="created">Created</button>
         </div>
-      </div>
-
-      <div class="search-row">
-        <input id="note-search" type="search" aria-label="Search notes" placeholder="Search notes" autocapitalize="none" autocorrect="off" spellcheck="false">
+        <div id="search-controls" hidden>
+          <input id="note-search" type="search" aria-label="Search notes" placeholder="Search notes" autocapitalize="none" autocorrect="off" spellcheck="false">
+          <button id="clear-search" class="text-button" type="button" aria-label="Clear search">×</button>
+        </div>
       </div>
 
       <div id="empty-state" class="empty-state" hidden>
@@ -146,6 +147,6 @@
     </form>
   </dialog>
 
-  <script src="app.js" defer></script>
+  <script src="app.js?v=14" defer></script>
 </body>
 </html>
