@@ -53,6 +53,33 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertRegex(self.css, r"(?s)#list-view\s*\{[^}]*height:\s*100dvh;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;")
         self.assertRegex(self.css, r"(?s)\.notes-list\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;")
 
+    def test_list_search_filters_full_note_text_without_changing_storage(self):
+        self.assertIn('id="note-search"', self.html)
+        self.assertIn('const query = noteSearch.value.trim().toLocaleLowerCase()', self.js)
+        self.assertIn('note.text.toLocaleLowerCase().includes(query)', self.js)
+        self.assertIn('noteSearch.addEventListener("input", renderNotes)', self.js)
+        self.assertIn('No matching notes.', self.js)
+        self.assertIn('noteSearch.value = "";\n  openNote(note.id)', self.js)
+        self.assertRegex(self.css, r'(?s)#list-view\s*\{[^}]*height:\s*var\(--visual-height, 100dvh\);[^}]*min-height:\s*0;')
+
+    def test_univers_font_options_use_real_web_faces(self):
+        for value in ('univers', 'univers-black', 'univers-extended'):
+            self.assertIn(f'data-value="{value}"', self.html)
+            self.assertIn(f'body.font-{value} :is(#editor, #editor-highlight)', self.css)
+        self.assertIn('document.body.classList.toggle(`font-${face}`, settings.font === face)', self.js)
+        for filename in ('U.woff2', 'U-Black.woff2', 'U-ExtraBlackExt.woff2'):
+            self.assertTrue((ROOT / 'scratch' / 'fonts' / filename).is_file())
+            self.assertIn(filename, self.css)
+        self.assertIn('body.font-univers-extended :is(#editor, #editor-highlight)', self.css)
+
+    def test_cursor_icon_has_vector_master_and_all_install_sizes(self):
+        svg = (ROOT / 'scratch' / 'icons' / 'cursor.svg').read_text()
+        self.assertIn('<path', svg)
+        self.assertIn('cursor', svg.lower())
+        for size in (180, 192, 512):
+            self.assertTrue((ROOT / 'scratch' / 'icons' / f'icon-{size}.png').is_file())
+        self.assertTrue((ROOT / 'scratch' / 'icons' / 'icon-512-maskable.png').is_file())
+
     def test_list_controls_exist(self):
         self.assertIn('id="data-button"', self.html)
         self.assertIn('data-setting="sort"', self.html)
@@ -136,7 +163,9 @@ class ScratchFeatureTests(unittest.TestCase):
 
     def test_service_worker_cache_is_advanced(self):
         sw = (ROOT / "scratch" / "sw.js").read_text()
-        self.assertIn('scratch-shell-v12', sw)
+        self.assertIn('scratch-shell-v13', sw)
+        for filename in ('U.woff2', 'U-Black.woff2', 'U-ExtraBlackExt.woff2'):
+            self.assertIn(f'fonts/{filename}', sw)
 
 
 if __name__ == "__main__":

@@ -35,8 +35,12 @@
         </div>
       </div>
 
+      <div class="search-row">
+        <input id="note-search" type="search" aria-label="Search notes" placeholder="Search notes" autocapitalize="none" autocorrect="off" spellcheck="false">
+      </div>
+
       <div id="empty-state" class="empty-state" hidden>
-        <p>Nothing here.</p>
+        <p id="empty-message">Nothing here.</p>
         <button id="empty-new-button" type="button">Make a note</button>
       </div>
       <ol id="notes-list" class="notes-list" aria-label="Notes, newest first"></ol>
@@ -78,9 +82,12 @@
       </div>
       <div class="setting-row">
         <span>Typeface</span>
-        <div class="segmented" role="group" aria-label="Typeface">
+        <div class="segmented font-options" role="group" aria-label="Typeface">
           <button type="button" data-setting="font" data-value="sans">Sans</button>
           <button type="button" data-setting="font" data-value="mono">Mono</button>
+          <button type="button" data-setting="font" data-value="univers">Univers</button>
+          <button type="button" data-setting="font" data-value="univers-black">U Black</button>
+          <button type="button" data-setting="font" data-value="univers-extended">U Ext</button>
         </div>
       </div>
       <div class="setting-row">

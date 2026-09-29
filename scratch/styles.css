@@ -1,3 +1,25 @@
+@font-face {
+  font-family: "Scratch Univers";
+  src: url("fonts/U.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Scratch Univers Black";
+  src: url("fonts/U-Black.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Scratch Univers Extended";
+  src: url("fonts/U-ExtraBlackExt.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light dark;
   --bg: #000;
@@ -43,6 +65,8 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .view { background: var(--bg); }
 #list-view {
   height: 100dvh;
+  height: var(--visual-height, 100dvh);
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -92,6 +116,26 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   font-weight: 700;
   border-bottom: 1px solid var(--line);
 }
+.search-row {
+  flex: 0 0 auto;
+  padding: 10px calc(20px + var(--safe-right)) 10px calc(20px + var(--safe-left));
+  border-bottom: 1px solid var(--line);
+}
+#note-search {
+  display: block;
+  width: 100%;
+  height: 42px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 14px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+#note-search::placeholder { color: var(--muted); }
 .notes-list {
   flex: 1 1 auto;
   min-height: 0;
@@ -125,7 +169,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .note-meta { display: flex; gap: 10px; min-width: 0; color: var(--muted); font-size: 14px; line-height: 1.25; }
 .note-date { flex: 0 0 auto; }
 .note-preview { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.empty-state { min-height: calc(100dvh - 134px); display: grid; place-content: center; justify-items: center; color: var(--muted); }
+.empty-state { flex: 1 1 auto; min-height: 0; display: grid; place-content: center; justify-items: center; color: var(--muted); }
 .empty-state p { margin: 0 0 16px; font-size: 20px; font-weight: 700; }
 .empty-state button, .wide-button { min-height: 48px; border: 0; border-radius: 12px; background: var(--surface-2); padding: 0 18px; font-weight: 750; }
 
@@ -201,6 +245,9 @@ body.org-editing #editor::placeholder { -webkit-text-fill-color: var(--placehold
 body.size-small :is(#editor, #editor-highlight) { font-size: 18px; line-height: 1.1; font-weight: 500; }
 body.size-xsmall :is(#editor, #editor-highlight) { font-size: 14px; line-height: 1.1; font-weight: 450; }
 body.font-mono :is(#editor, #editor-highlight) { font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace; }
+body.font-univers :is(#editor, #editor-highlight) { font-family: "Scratch Univers", Helvetica, Arial, sans-serif; font-weight: 400; }
+body.font-univers-black :is(#editor, #editor-highlight) { font-family: "Scratch Univers Black", Helvetica, Arial, sans-serif; font-weight: 700; }
+body.font-univers-extended :is(#editor, #editor-highlight) { font-family: "Scratch Univers Extended", Helvetica, Arial, sans-serif; font-weight: 900; }
 body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
 
 #reader {
@@ -243,6 +290,8 @@ body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: 
 .segmented button { min-height: 36px; border: 0; border-radius: 8px; padding: 0 11px; background: transparent; color: var(--muted); font-weight: 750; }
 .segmented button.active { background: var(--ink); color: var(--bg); }
 .segmented.compact button { min-height: 30px; padding: 0 10px; font-size: 12px; }
+.font-options { flex-wrap: wrap; justify-content: flex-end; max-width: 260px; }
+.font-options button { font-size: 12px; padding-inline: 8px; }
 .switch { flex: 0 0 auto; }
 .switch input { position: absolute; opacity: 0; pointer-events: none; }
 .switch span { display: block; width: 52px; height: 32px; border-radius: 16px; background: #444; position: relative; transition: background .15s ease; }

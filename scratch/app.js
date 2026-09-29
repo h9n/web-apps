@@ -22,7 +22,9 @@ const $ = selector => document.querySelector(selector);
 const listView = $("#list-view");
 const editorView = $("#editor-view");
 const notesList = $("#notes-list");
+const noteSearch = $("#note-search");
 const emptyState = $("#empty-state");
+const emptyMessage = $("#empty-message");
 const editor = $("#editor");
 const editorHighlight = $("#editor-highlight");
 const editorStage = $("#editor-stage");
@@ -81,6 +83,9 @@ function applySettings() {
   document.body.classList.toggle("size-small", settings.size === "small");
   document.body.classList.toggle("size-xsmall", settings.size === "xsmall");
   document.body.classList.toggle("font-mono", settings.font === "mono");
+  for (const face of ["univers", "univers-black", "univers-extended"]) {
+    document.body.classList.toggle(`font-${face}`, settings.font === face);
+  }
   document.body.classList.toggle("no-wrap", !settings.wrap);
   wrapToggle.checked = settings.wrap;
   typingToggle.checked = settings.typing;
@@ -342,11 +347,15 @@ function formatDate(timestamp) {
 
 function renderNotes() {
   notesList.replaceChildren();
-  emptyState.hidden = notes.length !== 0;
-  notesList.hidden = notes.length === 0;
+  const query = noteSearch.value.trim().toLocaleLowerCase();
+  const visibleNotes = query ? notes.filter(note => note.text.toLocaleLowerCase().includes(query)) : notes;
+  emptyState.hidden = visibleNotes.length !== 0;
+  notesList.hidden = visibleNotes.length === 0;
+  emptyMessage.textContent = notes.length && query ? "No matching notes." : "Nothing here.";
+  $("#empty-new-button").hidden = notes.length > 0;
   const dateField = settings.sort === "created" ? "createdAt" : "updatedAt";
 
-  for (const note of notes) {
+  for (const note of visibleNotes) {
     const row = document.createElement("li");
     row.className = "note-row";
     const button = document.createElement("button");
@@ -383,6 +392,7 @@ async function createNote() {
   const note = { id: makeId(), text: "", syntax: "plain", createdAt: now, updatedAt: now };
   await transact("readwrite", store => store.put(note));
   notes.unshift(note);
+  noteSearch.value = "";
   openNote(note.id);
 }
 
@@ -737,6 +747,10 @@ function syncVisualViewport() {
 }
 
 function wireEvents() {
+  noteSearch.addEventListener("input", renderNotes);
+  noteSearch.addEventListener("keydown", event => {
+    if (event.key === "Enter") noteSearch.blur();
+  });
   $("#new-note-button").addEventListener("click", createNote);
   $("#empty-new-button").addEventListener("click", createNote);
   $("#back-button").addEventListener("click", () => closeEditor());
