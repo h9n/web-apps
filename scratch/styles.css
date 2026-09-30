@@ -6,6 +6,13 @@
   font-display: swap;
 }
 @font-face {
+  font-family: "Scratch Univers";
+  src: url("fonts/U-Black.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
   font-family: "Scratch Univers Black";
   src: url("fonts/U-Black.woff2") format("woff2");
   font-weight: 700;
@@ -53,7 +60,7 @@ html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--in
 body {
   min-height: 100dvh;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  font-family: "Scratch Univers", Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
@@ -259,6 +266,7 @@ body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: 
   min-height: 0;
   overflow: auto;
   padding: 22px calc(20px + var(--safe-right)) calc(40px + var(--safe-bottom)) calc(20px + var(--safe-left));
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
   font-size: 19px;
   line-height: 1.5;
   -webkit-overflow-scrolling: touch;
@@ -275,6 +283,7 @@ body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: 
 
 #settings-dialog, #data-dialog {
   width: min(100%, 560px);
+  font: inherit;
   max-width: none;
   max-height: min(82dvh, 700px);
   margin: auto auto 0;
@@ -308,7 +317,7 @@ body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: 
 .wide-button { width: 100%; margin-top: 10px; }
 .stash-section { margin-top: 24px; border-top: 1px solid var(--line); }
 .field-label { display: block; margin: 14px 0 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
-.text-field { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; background: var(--bg); color: var(--ink); font-size: 16px; }
+.text-field { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; background: var(--bg); color: var(--ink); font: inherit; font-size: 16px; }
 .wide-button:disabled { opacity: .42; }
 
 body.landscape-keyboard .editor-bar { display: none; }

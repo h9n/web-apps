@@ -1,5 +1,5 @@
-const CACHE = "scratch-shell-v14";
-const SHELL = ["./", "./index.html", "./styles.css?v=14", "./app.js?v=14", "./manifest.webmanifest", "./icons/cursor-180.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-512-maskable.png", "./fonts/U.woff2", "./fonts/U-Black.woff2", "./fonts/U-ExtraBlackExt.woff2"];
+const CACHE = "scratch-shell-v16";
+const SHELL = ["./", "./index.html", "./styles.css?v=15", "./app.js?v=15", "./manifest.webmanifest", "./icons/caret-180.png", "./icons/caret-192.png", "./icons/caret-512.png", "./icons/caret-512-maskable.png", "./fonts/U.woff2", "./fonts/U-Black.woff2", "./fonts/U-ExtraBlackExt.woff2"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));

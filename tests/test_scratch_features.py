@@ -72,12 +72,20 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertIn('.list-controls.searching', self.css)
 
     def test_shell_assets_are_versioned_together(self):
-        self.assertIn('href="styles.css?v=14"', self.html)
-        self.assertIn('src="app.js?v=14"', self.html)
+        self.assertIn('href="styles.css?v=15"', self.html)
+        self.assertIn('src="app.js?v=15"', self.html)
         sw = (ROOT / 'scratch' / 'sw.js').read_text()
-        self.assertIn('"./styles.css?v=14"', sw)
-        self.assertIn('"./app.js?v=14"', sw)
-        self.assertIn('scratch-shell-v14', sw)
+        self.assertIn('"./styles.css?v=15"', sw)
+        self.assertIn('"./app.js?v=15"', sw)
+        self.assertIn('scratch-shell-v16', sw)
+
+    def test_univers_regular_and_black_are_used_for_ui_only(self):
+        self.assertRegex(self.css, r'(?s)@font-face\s*\{\s*font-family: "Scratch Univers";\s*src: url\("fonts/U-Black.woff2"\).*?font-weight: 700;')
+        self.assertRegex(self.css, r'(?s)body\s*\{[^}]*font-family: "Scratch Univers", Helvetica, Arial, sans-serif;')
+        self.assertRegex(self.css, r'(?s)#settings-dialog, #data-dialog\s*\{[^}]*font: inherit;')
+        self.assertRegex(self.css, r'(?s)\.text-field\s*\{[^}]*font: inherit;')
+        self.assertRegex(self.css, r'(?s)#reader\s*\{[^}]*font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;')
+        self.assertRegex(self.css, r'(?s)#editor, #editor-highlight\s*\{[^}]*font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;')
 
     def test_univers_font_options_use_real_web_faces(self):
         for value in ('univers', 'univers-black', 'univers-extended'):
@@ -92,9 +100,11 @@ class ScratchFeatureTests(unittest.TestCase):
     def test_cursor_icon_has_vector_master_and_all_install_sizes(self):
         svg = (ROOT / 'scratch' / 'icons' / 'cursor.svg').read_text()
         self.assertIn('<path', svg)
-        self.assertIn('cursor', svg.lower())
-        self.assertTrue((ROOT / 'scratch' / 'icons' / 'cursor-180.png').is_file())
-        self.assertIn('href="icons/cursor-180.png"', self.html)
+        self.assertIn('M242 100h28v312h-28Z', svg)
+        self.assertNotIn('M151 98v296', svg)
+        self.assertTrue((ROOT / 'scratch' / 'icons' / 'caret-180.png').is_file())
+        self.assertIn('href="icons/caret-180.png"', self.html)
+        self.assertIn('icons/caret-192.png', (ROOT / 'scratch' / 'manifest.webmanifest').read_text())
         for size in (180, 192, 512):
             self.assertTrue((ROOT / 'scratch' / 'icons' / f'icon-{size}.png').is_file())
         self.assertTrue((ROOT / 'scratch' / 'icons' / 'icon-512-maskable.png').is_file())
@@ -182,7 +192,7 @@ class ScratchFeatureTests(unittest.TestCase):
 
     def test_service_worker_cache_is_advanced(self):
         sw = (ROOT / "scratch" / "sw.js").read_text()
-        self.assertIn('scratch-shell-v14', sw)
+        self.assertIn('scratch-shell-v16', sw)
         for filename in ('U.woff2', 'U-Black.woff2', 'U-ExtraBlackExt.woff2'):
             self.assertIn(f'fonts/{filename}', sw)
 
