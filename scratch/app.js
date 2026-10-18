@@ -69,6 +69,9 @@ let stashBackupRunning = false;
 let stashSyncRunning = false;
 let saveInFlight = null;
 let sealedRevision = null;
+let conflictsOnly = false;
+let conflictSession = null;
+let conflictResolving = false;
 const viewportBaselines = { portrait: 0, landscape: 0 };
 
 function loadSettings() {
@@ -379,7 +382,11 @@ function setSearchOpen(open) {
 function renderNotes() {
   notesList.replaceChildren();
   const query = noteSearch.value.trim().toLocaleLowerCase();
-  const visibleNotes = query ? notes.filter(note => note.text.toLocaleLowerCase().includes(query)) : notes;
+  const roots = currentConflictGroups();
+  if (!roots.size) conflictsOnly = false;
+  renderConflictIndicators(roots);
+  const candidates = conflictsOnly ? notes.filter(note => roots.has(note.conflictOf || note.id)) : notes;
+  const visibleNotes = query ? candidates.filter(note => note.text.toLocaleLowerCase().includes(query)) : candidates;
   emptyState.hidden = visibleNotes.length !== 0;
   notesList.hidden = visibleNotes.length === 0;
   emptyMessage.textContent = notes.length && query ? "No matching notes." : "Nothing here.";
@@ -417,6 +424,128 @@ function renderNotes() {
     row.append(deleteButton, button);
     wireNoteSwipe(row, button);
     notesList.append(row);
+  }
+}
+
+function currentConflictGroups() {
+  const groups = new Map();
+  for (const note of notes) {
+    const root = note.conflictOf || note.id;
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(note);
+  }
+  for (const [root, versions] of groups) if (versions.length < 2) groups.delete(root);
+  return groups;
+}
+
+function renderConflictIndicators(groups = currentConflictGroups()) {
+  const count = groups.size;
+  const banner = $("#conflict-summary");
+  if (banner) banner.hidden = count === 0;
+  if ($("#conflict-count")) $("#conflict-count").textContent = `${count} note${count === 1 ? " has" : "s have"} conflicting versions`;
+  if ($("#review-conflicts-button")) $("#review-conflicts-button").textContent = conflictsOnly ? "Show all notes" : "Show conflicts";
+  const dataButton = $("#show-conflicts-button");
+  if (dataButton) { dataButton.hidden = count === 0; dataButton.textContent = `Show conflicts (${count})`; }
+}
+
+async function showConflicts() {
+  if (!editorView.hidden) await closeEditor();
+  if (dataDialog.open) dataDialog.close();
+  conflictsOnly = true;
+  noteSearch.value = "";
+  renderNotes();
+}
+
+function openConflictReview(id, preserveDraft = false) {
+  const note = notes.find(item => item.id === id);
+  const rootId = note?.conflictOf || note?.id || id;
+  const versions = currentConflictGroups().get(rootId);
+  if (!versions) {
+    $("#conflict-status").textContent = "These versions are no longer available. Any combined text is still here; copy it before closing.";
+    return;
+  }
+  const prior = preserveDraft ? conflictSession : null;
+  conflictSession = {
+    rootId,
+    versions: structuredClone(versions),
+    reviewedRevisions: versions.map(item => item.revision),
+    selectedRevision: versions.some(item => item.revision === prior?.selectedRevision) ? prior.selectedRevision : versions[0].revision,
+    baseText: prior?.baseText ?? null,
+    syntax: prior?.syntax ?? versions[0].syntax
+  };
+  const container = $("#conflict-versions");
+  container.replaceChildren();
+  versions.forEach((version, index) => {
+    const section = document.createElement("section"); section.className = "conflict-version";
+    const heading = document.createElement("h3"); heading.textContent = `Version ${index + 1} · ${noteHeading(version.text)}`;
+    const meta = document.createElement("small");
+    meta.textContent = `${version.deviceId === deviceId ? "This device" : version.deviceId ? "Another device" : "Earlier backup"} · ${new Date(version.updatedAt).toLocaleString()}${version.syntax === "org" ? " · Org" : ""}`;
+    const content = document.createElement("pre"); content.textContent = version.text || "Empty note";
+    const actions = document.createElement("div"); actions.className = "conflict-actions";
+    const use = document.createElement("button"); use.type = "button"; use.className = "wide-button"; use.textContent = "Use this version";
+    use.addEventListener("click", () => resolveReviewedConflict("use", version.revision));
+    const combine = document.createElement("button"); combine.type = "button"; combine.className = "wide-button"; combine.textContent = "Combine manually";
+    combine.addEventListener("click", () => beginConflictCombination(version.revision));
+    actions.append(use, combine); section.append(heading, meta, content, actions); container.append(section);
+  });
+  if (!preserveDraft) { $("#conflict-combination").hidden = true; $("#conflict-draft").value = ""; }
+  $("#conflict-keep-both").textContent = versions.length === 2 ? "Keep both as separate notes" : "Keep all as separate notes";
+  $("#conflict-status").textContent = preserveDraft ? "Versions refreshed. Review them before choosing; your combined text has been kept." : "";
+  $("#conflict-review-latest").hidden = true;
+  if (!$("#conflict-dialog").open) $("#conflict-dialog").showModal();
+}
+
+function conflictDraftChanged() {
+  return Boolean(conflictSession && conflictSession.baseText !== null && !$("#conflict-combination").hidden && $("#conflict-draft").value !== conflictSession.baseText);
+}
+
+function closeConflictReview() {
+  if (conflictResolving) return;
+  if (conflictDraftChanged() && !confirm("Discard your unsaved combined text? The original versions will be kept.")) return;
+  $("#conflict-dialog").close(); conflictSession = null;
+}
+
+function beginConflictCombination(revision) {
+  const source = conflictSession?.versions.find(note => note.revision === revision);
+  if (!source) return;
+  if (conflictDraftChanged() && !confirm("Replace your combined text with this version?")) return;
+  conflictSession.selectedRevision = revision;
+  conflictSession.baseText = source.text;
+  conflictSession.syntax = source.syntax;
+  $("#conflict-draft").value = source.text;
+  $("#conflict-combination").hidden = false;
+  $("#conflict-draft").focus();
+}
+
+async function resolveReviewedConflict(mode, selectedRevision = conflictSession?.selectedRevision) {
+  if (!conflictSession || conflictResolving) return;
+  if (mode !== "combine" && conflictDraftChanged() && !confirm("Use this choice instead of your unsaved combined text?")) return;
+  const options = {
+    rootId: conflictSession.rootId,
+    reviewedRevisions: [...conflictSession.reviewedRevisions],
+    mode, selectedRevision, deviceId, now: Date.now(),
+    ...(mode === "combine" ? { text: $("#conflict-draft").value, syntax: conflictSession.syntax } : {})
+  };
+  conflictResolving = true;
+  $("#conflict-draft").readOnly = true;
+  $("#conflict-dialog").querySelectorAll("button").forEach(button => { button.disabled = true; });
+  $("#conflict-status").textContent = "Saving your choice…";
+  try {
+    await queueLocalMutation(async () => {
+      await flushSaveInternal();
+      const resolved = ScratchSync.resolveConflict({ notes, tombstones }, options);
+      await commitMergedSnapshot([resolved]);
+    });
+    $("#conflict-dialog").close(); conflictSession = null;
+    scheduleStashBackup(1000);
+    $("#sync-status").textContent = "Conflict resolved locally. Sync now to exchange your choice with other devices.";
+  } catch (error) {
+    $("#conflict-status").textContent = `${error.message} Your original versions and any combined text are still available.`;
+    $("#conflict-review-latest").hidden = false;
+  } finally {
+    conflictResolving = false;
+    $("#conflict-draft").readOnly = false;
+    $("#conflict-dialog").querySelectorAll("button").forEach(button => { button.disabled = false; });
   }
 }
 
@@ -467,6 +596,7 @@ async function commitRestoredNote(note) {
   const restored = ScratchSync.normalizeNote({ id: makeId(), text: note.text, syntax: note.syntax, createdAt: now, updatedAt: now });
   await transact("readwrite", store => store.put(restored));
   notes.push(restored);
+  conflictsOnly = false;
   noteSearch.value = "";
   sortNotes(); renderNotes();
   scheduleStashBackup();
@@ -487,6 +617,7 @@ async function commitCreatedNote() {
   const note = ScratchSync.normalizeNote({ id: makeId(), text: "", syntax: "plain", createdAt: now, updatedAt: now });
   await transact("readwrite", store => store.put(note));
   notes.unshift(note);
+  conflictsOnly = false;
   noteSearch.value = "";
   openNote(note.id);
 }
@@ -907,7 +1038,7 @@ async function runStashSync() {
       remotes.push(decodeBackupSnapshot(snapshot));
     }
     const report = await applyMergedSnapshot(remotes);
-    const summary = `Added ${report.added}, updated ${report.updated}, deleted ${report.deleted}; ${report.conflicts} conflict${report.conflicts === 1 ? "" : "s"} preserved.`;
+    const summary = `Added ${report.added}, updated ${report.updated}, deleted ${report.deleted}; ${report.conflicts} unresolved extra version${report.conflicts === 1 ? "" : "s"} retained.`;
     if (!await backupToStash(true, true)) { status.textContent = `Merged locally. ${summary} Merged backup pending: ${stashConfig.lastError}`; return; }
     status.textContent = `Sync complete. ${summary}`;
   } catch (error) {
@@ -1009,12 +1140,22 @@ function syncVisualViewport() {
 }
 
 function wireEvents() {
+  $("#show-conflicts-button")?.addEventListener("click", showConflicts);
+  $("#review-conflicts-button")?.addEventListener("click", () => {
+    if (conflictsOnly) { conflictsOnly = false; renderNotes(); }
+    else showConflicts();
+  });
+  $("#conflict-close")?.addEventListener("click", closeConflictReview);
+  $("#conflict-dialog")?.addEventListener("cancel", event => { event.preventDefault(); closeConflictReview(); });
+  $("#conflict-save-combination")?.addEventListener("click", () => resolveReviewedConflict("combine"));
+  $("#conflict-keep-both")?.addEventListener("click", () => resolveReviewedConflict("keep-both"));
+  $("#conflict-review-latest")?.addEventListener("click", () => conflictSession && openConflictReview(conflictSession.rootId, true));
   $("#undo-delete")?.addEventListener("click", async () => {
     if (!undoNote) return;
     await restoreDeletedNote(undoNote);
     clearTimeout(undoTimer); undoNote = null; $("#delete-notice").hidden = true;
   });
-  for (const dialog of [settingsDialog, dataDialog]) {
+  for (const dialog of [settingsDialog, dataDialog, $("#conflict-dialog")].filter(Boolean)) {
     let startedOutside = false;
     const outside = event => {
       const rect = dialog.getBoundingClientRect();
@@ -1022,7 +1163,10 @@ function wireEvents() {
     };
     dialog.addEventListener("pointerdown", event => { startedOutside = event.target === dialog && outside(event); });
     dialog.addEventListener("click", event => {
-      if (startedOutside && event.target === dialog && outside(event)) dialog.close();
+      if (startedOutside && event.target === dialog && outside(event)) {
+        if (dialog.id === "conflict-dialog") closeConflictReview();
+        else dialog.close();
+      }
       startedOutside = false;
     });
   }
@@ -1051,7 +1195,10 @@ function wireEvents() {
   });
   notesList.addEventListener("click", event => {
     const button = event.target.closest(".note-button");
-    if (button) openNote(button.dataset.id);
+    if (!button) return;
+    const note = notes.find(item => item.id === button.dataset.id);
+    if (note && currentConflictGroups().has(note.conflictOf || note.id)) openConflictReview(note.id);
+    else openNote(button.dataset.id);
   });
 
   const openSettings = () => {

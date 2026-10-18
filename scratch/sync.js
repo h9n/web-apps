@@ -1,4 +1,4 @@
-/* Scratch snapshot sync. Pure except editNote's UUID allocation. */
+/* Scratch snapshot sync. Pure except edit/resolve UUID allocation. */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.ScratchSync = factory();
@@ -288,5 +288,72 @@
       conflicts: notes.filter(n => n.conflictOf).length
     } };
   }
-  return { normalizeNote, editNote, mergeSnapshots };
+  // Throws before allocating revisions if the caller's review is stale/deleted.
+  // Removed conflict IDs are deliberately NOT tombstoned: the new root's
+  // ancestry suppresses reviewed heads, leaving unseen branches concurrent.
+  function resolveConflict(snapshot, options) {
+    validateSnapshot(snapshot);
+    validateHistory([snapshot]);
+    if (!options || typeof options !== 'object' || Array.isArray(options)) fail('resolution options object');
+    // Options need not be JSON (an omitted optional value is allowed), but must
+    // never invoke accessors while validating a resolution request.
+    for (const key of Object.keys(options)) {
+      if (forbidden.has(key) || !own(Object.getOwnPropertyDescriptor(options, key), 'value')) fail('unsafe resolution options');
+    }
+    const { rootId, selectedRevision, deviceId, now } = options;
+    identifier(rootId);
+    if (rootId.startsWith('conflict:')) fail('resolution requires the original root id');
+    identifier(selectedRevision);
+    identifier(deviceId);
+    timestamp(now);
+    if (!['use', 'combine', 'keep-both'].includes(options.mode)) fail('resolution mode');
+    if (!Array.isArray(options.reviewedRevisions)) fail('reviewed revisions array');
+    for (const revision of options.reviewedRevisions) identifier(revision);
+    if ((options.mode === 'combine' || own(options, 'text')) && typeof options.text !== 'string') fail('resolution text must be a string');
+    if ((options.mode === 'combine' || own(options, 'syntax')) && !['plain', 'org'].includes(options.syntax)) fail('resolution syntax must be plain or org');
+    const group = snapshot.notes.filter(note => note.id === rootId || note.conflictOf === rootId).map(normalizeNote);
+    const deleted = new Set(snapshot.tombstones.map(tombstone => tombstone.id));
+    if (deleted.has(rootId) || group.some(note => deleted.has(note.id) || [note.revision, ...note.ancestors].some(revision => deleted.has(conflictId(rootId, revision))))) fail('conflict group contains a permanently deleted version; refresh before resolving');
+    if (group.length < 2) fail('no live conflict group remains; refresh before resolving');
+    if (group.some(note => group.some(other => other.ancestors.includes(note.revision))) || new Set(group.map(note => note.revision)).size !== group.length) fail('stale conflict group: expected only live revision heads');
+    const reviewed = new Set(options.reviewedRevisions);
+    if (reviewed.size !== group.length || group.some(note => !reviewed.has(note.revision))) fail('reviewed revisions no longer match the live conflict group; refresh and review all versions');
+    const selected = group.find(note => note.revision === selectedRevision);
+    if (!selected) fail('selected revision is not a reviewed live version');
+    const resolved = editNote(selected, deviceId);
+    resolved.id = rootId;
+    delete resolved.conflictOf;
+    resolved.updatedAt = now;
+    if (options.mode === 'combine') {
+      resolved.text = options.text;
+      resolved.syntax = options.syntax;
+    }
+    resolved.ancestors = [...new Set(group.flatMap(note => [note.revision, ...note.ancestors]))].sort();
+    const notes = snapshot.notes.filter(note => note.id !== rootId && note.conflictOf !== rootId).map(clone);
+    notes.push(resolved);
+    if (options.mode === 'keep-both') {
+      const crypto = typeof globalThis.crypto !== 'undefined' ? globalThis.crypto : require('node:crypto');
+      for (const note of group.filter(note => note.revision !== selectedRevision)) {
+        const independent = clone(note);
+        independent.id = crypto.randomUUID();
+        delete independent.conflictOf;
+        delete independent.revision;
+        delete independent.ancestors;
+        independent.createdAt = now;
+        independent.updatedAt = now;
+        independent.deviceId = deviceId;
+        independent.revision = crypto.randomUUID();
+        independent.ancestors = [];
+        notes.push(independent);
+      }
+    }
+    notes.sort((a, b) => compare(a.id, b.id));
+    return { notes, tombstones: clone(snapshot.tombstones), report: {
+      added: (options.mode === 'keep-both' ? group.length - 1 : 0) + (snapshot.notes.some(note => note.id === rootId) ? 0 : 1),
+      updated: snapshot.notes.some(note => note.id === rootId) ? 1 : 0,
+      deleted: group.filter(note => note.id !== rootId).length,
+      conflicts: notes.filter(note => note.conflictOf).length
+    } };
+  }
+  return { normalizeNote, editNote, mergeSnapshots, resolveConflict };
 }));

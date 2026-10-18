@@ -6,6 +6,200 @@ const vm = require('node:vm');
 const Sync = fs.existsSync(require('node:path').join(__dirname, '../sync.js')) ? require('../sync.js') : {};
 const note = (text = 'hello', id = 'note-1') => ({ id, text, syntax: 'plain', createdAt: 10, updatedAt: 20 });
 const snapshot = (notes = [], tombstones = []) => ({ notes, tombstones });
+const conflictFixture = (count = 2) => {
+  const base = Sync.normalizeNote(note());
+  const heads = Array.from({ length: count }, (_, i) => Sync.editNote({ ...base, text: `version-${i}`, syntax: i % 2 ? 'org' : 'plain' }, `device-${i}`));
+  return { base, heads, current: Sync.mergeSnapshots(snapshot([heads[0]]), heads.slice(1).map(n => snapshot([n]))) };
+};
+const resolutionOptions = (current, overrides = {}) => ({
+  rootId: 'note-1', reviewedRevisions: current.notes.filter(n => n.id === 'note-1' || n.conflictOf === 'note-1').map(n => n.revision),
+  mode: 'use', selectedRevision: current.notes.find(n => n.conflictOf).revision, deviceId: 'resolver', now: 100, ...overrides
+});
+
+test('use resolution keeps the original identity and acknowledges every reviewed head and ancestor', () => {
+  const { base, heads, current } = conflictFixture(3);
+  const selected = current.notes.find(n => n.conflictOf);
+  const unrelated = note('untouched', 'other');
+  const tombstone = { id: 'deleted-other', deletedAt: 0, deviceId: 'a', deviceName: 'A', extra: { retained: true } };
+  const input = snapshot([...current.notes, unrelated], [tombstone]);
+  const options = resolutionOptions(current);
+  const freeze = value => { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
+  const before = JSON.stringify([input, options]);
+  freeze(input); freeze(options);
+  const result = Sync.resolveConflict(input, options);
+  const resolved = result.notes.find(n => n.id === base.id);
+  assert.equal(resolved.text, selected.text);
+  assert.equal(resolved.syntax, selected.syntax);
+  assert.equal(resolved.createdAt, selected.createdAt);
+  assert.equal(resolved.updatedAt, 100);
+  assert.equal(resolved.deviceId, 'resolver');
+  assert.equal(resolved.conflictOf, undefined);
+  assert.match(resolved.revision, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  assert.deepEqual(resolved.ancestors, [base.revision, ...heads.map(n => n.revision)].sort());
+  assert.deepEqual(result.notes.find(n => n.id === 'other'), unrelated);
+  assert.deepEqual(result.tombstones, [tombstone]);
+  assert.deepEqual(result.report, { added: 0, updated: 1, deleted: 2, conflicts: 0 });
+  assert.equal(JSON.stringify([input, options]), before);
+  for (const stale of [current, ...heads.map(n => snapshot([n]))]) {
+    assert.deepEqual(Sync.mergeSnapshots(result, [stale]).notes, Sync.mergeSnapshots(stale, [result]).notes);
+    assert.equal(Sync.mergeSnapshots(stale, [result]).notes.filter(n => n.id === base.id || n.conflictOf === base.id).length, 1);
+  }
+});
+
+test('combine resolution persists explicit draft text and syntax including empty content', () => {
+  const { current } = conflictFixture();
+  for (const text of ['combined draft\n* heading', '']) {
+    const result = Sync.resolveConflict(current, resolutionOptions(current, { mode: 'combine', text, syntax: 'org' }));
+    assert.equal(result.notes.length, 1);
+    assert.equal(result.notes[0].text, text);
+    assert.equal(result.notes[0].syntax, 'org');
+    assert.deepEqual(Sync.mergeSnapshots(current, [result]).notes, result.notes);
+  }
+});
+
+test('keep-both makes every nonselected version independent without replaying old conflicts', () => {
+  const { base, heads, current } = conflictFixture(4);
+  const options = resolutionOptions(current, { mode: 'keep-both' });
+  const result = Sync.resolveConflict(current, options);
+  assert.equal(result.notes.length, 4);
+  assert.deepEqual(result.notes.map(n => [n.text, n.syntax]).sort(), heads.map(n => [n.text, n.syntax]).sort());
+  const root = result.notes.find(n => n.id === base.id);
+  assert.equal(root.text, heads.find(n => n.revision === options.selectedRevision).text);
+  const independent = result.notes.filter(n => n.id !== base.id);
+  for (const n of independent) {
+    assert.match(n.id, /^[0-9a-f-]{36}$/);
+    assert.match(n.revision, /^[0-9a-f-]{36}$/);
+    assert.equal(n.conflictOf, undefined);
+    assert.deepEqual(n.ancestors, []);
+    assert.equal(n.deviceId, options.deviceId);
+    assert.equal(n.createdAt, options.now);
+    assert.equal(n.updatedAt, options.now);
+    assert.ok(!heads.some(h => h.revision === n.revision));
+  }
+  assert.equal(new Set(result.notes.flatMap(n => [n.id, n.revision])).size, 8);
+  assert.deepEqual(result.report, { added: 3, updated: 1, deleted: 3, conflicts: 0 });
+  for (const stale of [current, snapshot(heads.slice(0, 1)), snapshot(heads.slice(1, 2))]) {
+    assert.deepEqual(Sync.mergeSnapshots(result, [stale]).notes, result.notes);
+    assert.deepEqual(Sync.mergeSnapshots(stale, [result]).notes, result.notes);
+  }
+});
+
+test('resolution rejects stale, missing, unseen and non-live reviewed groups without changing drafts', () => {
+  const { base, heads, current } = conflictFixture(3);
+  const options = resolutionOptions(current, { mode: 'combine', text: 'precious draft', syntax: 'org' });
+  const before = JSON.stringify([current, options]);
+  for (const reviewedRevisions of [[], options.reviewedRevisions.slice(1), [...options.reviewedRevisions, 'unseen'], [base.revision, ...options.reviewedRevisions.slice(1)]]) {
+    assert.throws(() => Sync.resolveConflict(current, { ...options, reviewedRevisions }), /reviewed.*(changed|match)|stale/i);
+  }
+  const next = Sync.editNote({ ...heads[0], text: 'newly arrived' }, 'late');
+  const advanced = Sync.mergeSnapshots(current, [snapshot([next])]);
+  assert.throws(() => Sync.resolveConflict(advanced, options), /reviewed.*(changed|match)|stale/i);
+  assert.throws(() => Sync.resolveConflict(snapshot(), options), /live conflict/i);
+  assert.throws(() => Sync.resolveConflict(snapshot([heads[0]]), options), /live conflict/i);
+  const obsolete = { ...heads[0], revision: 'obsolete', ancestors: [] };
+  const nonHeads = snapshot([...current.notes, { ...obsolete, id: 'conflict:obsolete', conflictOf: base.id }]);
+  nonHeads.notes[0] = { ...nonHeads.notes[0], ancestors: [...nonHeads.notes[0].ancestors, obsolete.revision] };
+  assert.throws(() => Sync.resolveConflict(nonHeads, resolutionOptions(nonHeads)), /live.*head|stale/i);
+  assert.equal(JSON.stringify([current, options]), before);
+});
+
+test('resolution validates options and the whole snapshot with explainable errors', () => {
+  const { current } = conflictFixture();
+  const options = resolutionOptions(current);
+  const cases = [
+    [null, /options/], [[], /options/],
+    [{ ...options, mode: 'discard' }, /mode/],
+    [{ ...options, rootId: ' ' }, /identifier/],
+    [{ ...options, rootId: 'conflict:fake' }, /root/],
+    [{ ...options, selectedRevision: 'unknown' }, /selected revision/],
+    [{ ...options, selectedRevision: null }, /identifier/],
+    [{ ...options, reviewedRevisions: null }, /reviewed revisions/],
+    [{ ...options, reviewedRevisions: 'abc' }, /reviewed revisions/],
+    [{ ...options, reviewedRevisions: [...options.reviewedRevisions, 2] }, /identifier/],
+    [{ ...options, deviceId: '' }, /identifier/],
+    [{ ...options, deviceId: 2 }, /identifier/],
+    ...[undefined, NaN, Infinity, -1, '100'].map(now => [{ ...options, now }, /timestamp/]),
+    [{ ...options, mode: 'combine', syntax: 'org' }, /text/],
+    [{ ...options, mode: 'combine', text: 2, syntax: 'org' }, /text/],
+    [{ ...options, mode: 'combine', text: 'draft' }, /syntax/],
+    [{ ...options, mode: 'combine', text: 'draft', syntax: 'html' }, /syntax/],
+    [{ ...options, text: 2 }, /text/],
+    [{ ...options, syntax: null }, /syntax/]
+  ];
+  for (const [invalid, message] of cases) assert.throws(() => Sync.resolveConflict(current, invalid), message);
+  assert.throws(() => Sync.resolveConflict(snapshot([...current.notes, { ...note('bad', 'unrelated'), syntax: 'html' }]), options), /note content/);
+  const result = Sync.resolveConflict(current, { ...options, reviewedRevisions: [...options.reviewedRevisions].reverse(), text: 'ignored for use', syntax: 'org' });
+  assert.equal(result.notes[0].text, current.notes.find(n => n.revision === options.selectedRevision).text);
+});
+
+test('resolution rejects deleted heads and root while leaving permanent deletion recovery intact', () => {
+  const { base, current } = conflictFixture(3);
+  const options = resolutionOptions(current);
+  const conflict = current.notes.find(n => n.conflictOf);
+  const deleted = id => ({ id, deletedAt: 50, deviceId: 'deleting-device', deviceName: 'Deleting device' });
+  for (const id of [base.id, conflict.id]) {
+    const mixed = snapshot(current.notes, [deleted(id)]);
+    assert.throws(() => Sync.resolveConflict(mixed, options), /deleted|deletion/i);
+    const live = Sync.mergeSnapshots(mixed, []);
+    assert.throws(() => Sync.resolveConflict(live, options), /live conflict|reviewed|deleted|deletion/i);
+  }
+  const resolved = Sync.resolveConflict(current, options);
+  const rootDeletion = snapshot([], [deleted(base.id)]);
+  const rootGone = Sync.mergeSnapshots(resolved, [rootDeletion, current]);
+  assert.deepEqual(rootGone.notes, []);
+  assert.ok(rootGone.tombstones[0].versions.some(n => n.revision === resolved.notes[0].revision));
+  assert.deepEqual(Sync.mergeSnapshots(rootDeletion, [resolved, current]).tombstones, rootGone.tombstones);
+  const conflictDeletion = snapshot([], [{ ...deleted(conflict.id), note: conflict }]);
+  const branchGone = Sync.mergeSnapshots(resolved, [conflictDeletion, current]);
+  assert.ok(!branchGone.notes.some(n => n.revision === resolved.notes[0].revision), 'acknowledged deleted branch still defeats a later resolution');
+  const recovery = branchGone.tombstones.find(t => t.id === conflict.id);
+  assert.equal(recovery.note.text, conflict.text);
+  assert.ok(recovery.versions.some(n => n.revision === resolved.notes[0].revision));
+  assert.deepEqual(Sync.mergeSnapshots(branchGone, [resolved, current, conflictDeletion]).notes, branchGone.notes);
+});
+
+test('unseen later branches remain conflicts after every resolution mode', () => {
+  for (const mode of ['use', 'combine', 'keep-both']) {
+    const { heads, current } = conflictFixture();
+    const result = Sync.resolveConflict(current, resolutionOptions(current, { mode, text: 'combined', syntax: 'plain' }));
+    const unseen = Sync.editNote({ ...heads[0], text: 'unseen later edit' }, 'late');
+    const merged = Sync.mergeSnapshots(result, [snapshot([unseen]), current]);
+    assert.equal(merged.notes.filter(n => n.id === 'note-1' || n.conflictOf === 'note-1').length, 2);
+    assert.ok(merged.notes.some(n => n.text === 'unseen later edit'));
+    assert.equal(merged.report.conflicts, 1);
+    assert.deepEqual(Sync.mergeSnapshots(snapshot([unseen]), [current, result]).notes, merged.notes);
+  }
+});
+
+test('independent concurrent resolutions preserve both decisions and transitive histories', () => {
+  const { heads, current } = conflictFixture(3);
+  const advanced = Sync.editNote({ ...heads[0], text: 'advanced' }, 'advance');
+  const live = Sync.mergeSnapshots(current, [snapshot([advanced])]);
+  const left = Sync.resolveConflict(live, resolutionOptions(live, { selectedRevision: advanced.revision }));
+  const right = Sync.resolveConflict(live, resolutionOptions(live, { mode: 'combine', text: 'other decision', syntax: 'org', deviceId: 'other-resolver' }));
+  const expectedAncestors = [...new Set([...heads.map(n => n.revision), ...live.notes.flatMap(n => [n.revision, ...n.ancestors])])].sort();
+  assert.deepEqual(left.notes[0].ancestors, expectedAncestors);
+  assert.deepEqual(right.notes[0].ancestors, expectedAncestors);
+  const merged = Sync.mergeSnapshots(left, [right, live, current]);
+  assert.deepEqual(merged.notes.map(n => n.text).sort(), ['advanced', 'other decision']);
+  assert.equal(merged.report.conflicts, 1);
+  assert.deepEqual(Sync.mergeSnapshots(right, [left, current, live]).notes, merged.notes);
+  assert.deepEqual(Sync.mergeSnapshots(merged, [left, right, current]).notes, merged.notes);
+});
+
+test('browser UMD resolves conflicts using browser UUID allocation', () => {
+  const context = { crypto: require('node:crypto').webcrypto };
+  const { current } = conflictFixture();
+  context.input = JSON.stringify(current);
+  context.options = JSON.stringify(resolutionOptions(current, { mode: 'keep-both' }));
+  vm.runInNewContext(fs.readFileSync(require.resolve('../sync.js'), 'utf8') + `
+    result = JSON.stringify(ScratchSync.resolveConflict(JSON.parse(input), JSON.parse(options)));
+  `, context);
+  const result = JSON.parse(context.result);
+  assert.equal(result.notes.length, 2);
+  assert.ok(result.notes.every(n => !n.conflictOf));
+  assert.deepEqual(Sync.mergeSnapshots(current, [result]).notes, result.notes);
+});
 
 test('legacy revisions are bounded SHA-256 digests matching Node crypto in browser and Node', () => {
   const { createHash } = require('node:crypto');

@@ -76,12 +76,12 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertIn('.list-controls.searching', self.css)
 
     def test_shell_assets_are_versioned_together(self):
-        self.assertIn('href="styles.css?v=16"', self.html)
-        self.assertIn('src="app.js?v=16"', self.html)
+        self.assertIn('href="styles.css?v=17"', self.html)
+        self.assertIn('src="app.js?v=17"', self.html)
         sw = (ROOT / 'scratch' / 'sw.js').read_text()
-        self.assertIn('"./styles.css?v=16"', sw)
-        self.assertIn('"./app.js?v=16"', sw)
-        self.assertIn('scratch-shell-v17', sw)
+        self.assertIn('"./styles.css?v=17"', sw)
+        self.assertIn('"./app.js?v=17"', sw)
+        self.assertIn('scratch-shell-v18', sw)
 
     def test_univers_regular_and_black_are_used_for_ui_only(self):
         self.assertRegex(self.css, r'(?s)@font-face\s*\{\s*font-family: "Scratch Univers";\s*src: url\("fonts/U-Black.woff2"\).*?font-weight: 700;')
@@ -196,7 +196,7 @@ class ScratchFeatureTests(unittest.TestCase):
 
     def test_service_worker_cache_is_advanced(self):
         sw = (ROOT / "scratch" / "sw.js").read_text()
-        self.assertIn('scratch-shell-v17', sw)
+        self.assertIn('scratch-shell-v18', sw)
         for filename in ('U.woff2', 'U-Black.woff2', 'U-ExtraBlackExt.woff2'):
             self.assertIn(f'fonts/{filename}', sw)
 

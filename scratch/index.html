@@ -12,7 +12,7 @@
   <meta name="description" content="A local-first plain-text scratchpad with optional backup and sync.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/caret-180.png">
-  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="stylesheet" href="styles.css?v=17">
   <title>Scratch</title>
 </head>
 <body>
@@ -40,6 +40,10 @@
         </div>
       </div>
 
+      <div id="conflict-summary" role="status" hidden>
+        <span id="conflict-count"></span>
+        <button id="review-conflicts-button" class="text-button" type="button">Show conflicts</button>
+      </div>
       <div id="empty-state" class="empty-state" hidden>
         <p id="empty-message">Nothing here.</p>
         <button id="empty-new-button" type="button">Make a note</button>
@@ -145,6 +149,7 @@
         <button id="stash-backup-button" class="wide-button" type="button" disabled>Back up now</button>
         <button id="stash-sync-button" class="wide-button" type="button" disabled>Sync now</button>
         <p id="sync-status" role="status">Sync is manual. Downloads the latest backup from each device; conflicting edits are kept separately.</p>
+        <button id="show-conflicts-button" class="wide-button" type="button" hidden>Show conflicts</button>
       </section>
       <section class="data-section" aria-labelledby="deleted-heading">
         <h3 id="deleted-heading">Deleted notes</h3>
@@ -158,8 +163,26 @@
     </form>
   </dialog>
 
+  <dialog id="conflict-dialog" aria-labelledby="conflict-heading">
+    <section class="settings-sheet">
+      <header class="sheet-header">
+        <h2 id="conflict-heading">Conflicting versions</h2>
+        <button id="conflict-close" class="text-button" type="button">Done</button>
+      </header>
+      <p class="conflict-help">Choose one version, combine their text, or keep them as separate notes. Your choice will travel with the next sync.</p>
+      <div id="conflict-versions"></div>
+      <section id="conflict-combination" hidden>
+        <label class="field-label" for="conflict-draft">Resolved text</label>
+        <textarea id="conflict-draft" aria-label="Combined note text" rows="8"></textarea>
+        <button id="conflict-save-combination" class="wide-button" type="button">Use combined text</button>
+      </section>
+      <button id="conflict-keep-both" class="wide-button" type="button">Keep both as separate notes</button>
+      <p id="conflict-status" role="status"></p>
+      <button id="conflict-review-latest" class="wide-button" type="button" hidden>Review latest versions</button>
+    </section>
+  </dialog>
   <div id="delete-notice" role="status" hidden><span>Note deleted</span><button id="undo-delete" class="text-button" type="button">Undo</button></div>
-  <script src="sync.js?v=16" defer></script>
-  <script src="app.js?v=16" defer></script>
+  <script src="sync.js?v=17" defer></script>
+  <script src="app.js?v=17" defer></script>
 </body>
 </html>

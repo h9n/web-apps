@@ -9,13 +9,14 @@ const assert=require('node:assert/strict');
  await page.evaluate(()=>navigator.serviceWorker.ready);
  await page.click('#new-note-button');await page.fill('#editor','Survive the app upgrade\n#ideas');await page.click('#back-button');await page.waitForFunction(()=>editorView.hidden&&!dirty);
  await page.reload();await page.waitForFunction(()=>notes.length===1);
- assert.equal(await page.evaluate(()=>db.version),1,'fixture starts on old DB');
+ assert.equal(await page.evaluate(()=>db.version),2,'fixture starts on the released DB');
  await page.request.post(new URL('/__upgrade',url).href);
  await page.evaluate(async()=>{const r=await navigator.serviceWorker.getRegistration();await r.update();});
- await page.waitForFunction(async()=> (await caches.keys()).includes('scratch-shell-v17'));
- await page.reload();await page.waitForFunction(()=>typeof ScratchSync!=='undefined'&&db?.version===2&&notes.length===1);
+ await page.waitForFunction(async()=> (await caches.keys()).includes('scratch-shell-v18'));
+ await page.reload();await page.waitForFunction(()=>typeof ScratchSync?.resolveConflict==='function'&&db?.version===2&&notes.length===1);
  assert.equal(await page.locator('.note-title').textContent(),'Survive the app upgrade','existing text survives migration');
  assert.equal(await page.locator('#stash-sync-button').count(),1);
+ assert.equal(await page.locator('#show-conflicts-button').count(),1);
  assert.deepEqual(await page.evaluate(()=>[...db.objectStoreNames]),['deletions','notes']);
  // Cut origin responses so both engines exercise the worker's network-failure fallback.
  await page.request.post(new URL('/__offline',url).href);await page.reload();await page.waitForFunction(()=>typeof ScratchSync!=='undefined'&&notes.length===1);

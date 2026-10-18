@@ -299,6 +299,17 @@ body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: 
   color: var(--ink);
 }
 #settings-dialog::backdrop, #data-dialog::backdrop { background: var(--backdrop); }
+#conflict-dialog { width: min(100%, 620px); max-width: none; max-height: min(88dvh, 900px); margin: auto auto 0; padding: 0; border: 0; border-radius: 20px 20px 0 0; background: var(--surface); color: var(--ink); font: inherit; }
+#conflict-dialog::backdrop { background: var(--backdrop); }
+#conflict-summary { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 20px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.conflict-help, #conflict-status { font-size: 14px; line-height: 1.4; color: var(--muted); }
+.conflict-version { min-width: 0; padding: 14px 0 18px; border-bottom: 1px solid var(--line); }
+.conflict-version h3 { margin: 0 0 6px; font-size: 17px; }
+.conflict-version small { color: var(--muted); }
+.conflict-version pre { max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+.conflict-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.conflict-actions button { flex: 1 1 140px; margin-top: 0; padding: 8px 12px; }
+#conflict-draft { display: block; width: 100%; resize: vertical; min-height: 180px; max-height: 45dvh; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
 .settings-sheet { padding: 0 calc(20px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(20px + var(--safe-left)); }
 .sheet-header { min-height: 68px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .sheet-header h2 { margin: 0; font-size: 22px; }
