@@ -1,8 +1,12 @@
 "use strict";
 
 const DB_NAME = "scratch-notes";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const NOTES_STORE = "notes";
+const DELETIONS_STORE = "deletions";
+const DEVICE_KEY = "scratch-device-id-v1";
+const deviceId = localStorage.getItem(DEVICE_KEY) || makeId();
+localStorage.setItem(DEVICE_KEY, deviceId);
 const SETTINGS_KEY = "scratch-settings-v1";
 const STASH_KEY = "scratch-stash-v1";
 const IDLE_SAVE_MS = 1200;
@@ -49,6 +53,9 @@ const stashBackupButton = $("#stash-backup-button");
 
 let db;
 let notes = [];
+let tombstones = [];
+let undoNote = null;
+let undoTimer = null;
 let activeNote = null;
 let dirty = false;
 let editRevision = 0;
@@ -59,6 +66,9 @@ let settings = loadSettings();
 let stashConfig = loadStashConfig();
 let stashBackupTimer = null;
 let stashBackupRunning = false;
+let stashSyncRunning = false;
+let saveInFlight = null;
+let sealedRevision = null;
 const viewportBaselines = { portrait: 0, landscape: 0 };
 
 function loadSettings() {
@@ -125,6 +135,7 @@ function setOrgSyntax(enabled) {
   readerMode = false;
   activeNote.syntax = enabled ? "org" : "plain";
   activeNote.updatedAt = Date.now();
+  markNoteRevision();
   dirty = true;
   editRevision += 1;
   saveStatus.textContent = "Unsaved";
@@ -166,16 +177,17 @@ function openDatabase() {
         const store = database.createObjectStore(NOTES_STORE, { keyPath: "id" });
         store.createIndex("updatedAt", "updatedAt");
       }
+      if (!database.objectStoreNames.contains(DELETIONS_STORE)) database.createObjectStore(DELETIONS_STORE, { keyPath: "id" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
 }
 
-function transact(mode, operation) {
+function transact(mode, operation, storeName = NOTES_STORE) {
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(NOTES_STORE, mode);
-    const store = transaction.objectStore(NOTES_STORE);
+    const transaction = db.transaction(storeName, mode);
+    const store = transaction.objectStore(storeName);
     let result;
     try { result = operation(store); } catch (error) { reject(error); return; }
     transaction.oncomplete = () => resolve(result?.result);
@@ -185,8 +197,9 @@ function transact(mode, operation) {
 }
 
 async function loadNotes() {
+  tombstones = await transact("readonly", store => store.getAll(), DELETIONS_STORE) || [];
   notes = await transact("readonly", store => store.getAll()) || [];
-  notes = notes.map(note => ({ ...note, syntax: note.syntax === "org" ? "org" : "plain" }));
+  notes = notes.map(note => ScratchSync.normalizeNote({ ...note, syntax: note.syntax === "org" ? "org" : "plain" }));
   sortNotes();
   renderNotes();
 }
@@ -383,7 +396,7 @@ function renderNotes() {
 
     const title = document.createElement("span");
     title.className = "note-title";
-    title.textContent = noteHeading(note.text);
+    title.textContent = `${note.conflictOf ? "Conflict · " : ""}${noteHeading(note.text)}`;
 
     const meta = document.createElement("span");
     meta.className = "note-meta";
@@ -395,19 +408,83 @@ function renderNotes() {
     preview.textContent = notePreview(note.text);
     meta.append(date, preview);
     button.append(title, meta);
-    row.append(button);
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "swipe-delete";
+    deleteButton.textContent = "Delete";
+    deleteButton.setAttribute("aria-label", `Delete ${noteHeading(note.text)}`);
+    deleteButton.addEventListener("click", () => removeNote(note.id, false));
+    row.append(deleteButton, button);
+    wireNoteSwipe(row, button);
     notesList.append(row);
   }
+}
+
+function wireNoteSwipe(row, button) {
+  let start = null;
+  let moved = false;
+  button.addEventListener("pointerdown", event => {
+    if (!event.isPrimary || event.button !== 0) return;
+    start = { x: event.clientX, y: event.clientY };
+    moved = false;
+  });
+  button.addEventListener("pointermove", event => {
+    if (!start) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { start = null; return; }
+    if (Math.abs(dx) > 24 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      moved = true;
+      button.setPointerCapture(event.pointerId);
+      notesList.querySelectorAll(".swiped").forEach(other => { if (other !== row) other.classList.remove("swiped"); });
+      row.classList.toggle("swiped", dx < 0);
+    }
+  });
+  button.addEventListener("pointerup", () => { start = null; });
+  button.addEventListener("pointercancel", () => { start = null; moved = false; });
+  button.addEventListener("click", event => {
+    if (moved || row.classList.contains("swiped")) {
+      event.preventDefault(); event.stopPropagation();
+      if (!moved) row.classList.remove("swiped");
+      moved = false;
+    }
+  });
+}
+
+function showDeleteUndo(note) {
+  undoNote = { ...note };
+  $("#delete-notice").hidden = false;
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(() => { $("#delete-notice").hidden = true; undoNote = null; }, 10000);
+}
+
+function restoreDeletedNote(note) {
+  return queueLocalMutation(() => commitRestoredNote(note));
+}
+
+async function commitRestoredNote(note) {
+  const now = Date.now();
+  const restored = ScratchSync.normalizeNote({ id: makeId(), text: note.text, syntax: note.syntax, createdAt: now, updatedAt: now });
+  await transact("readwrite", store => store.put(restored));
+  notes.push(restored);
+  noteSearch.value = "";
+  sortNotes(); renderNotes();
+  scheduleStashBackup();
+  return restored;
 }
 
 function makeId() {
   return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-async function createNote() {
-  await flushSave();
+function createNote() {
+  return queueLocalMutation(commitCreatedNote);
+}
+
+async function commitCreatedNote() {
+  await flushSaveInternal();
   const now = Date.now();
-  const note = { id: makeId(), text: "", syntax: "plain", createdAt: now, updatedAt: now };
+  const note = ScratchSync.normalizeNote({ id: makeId(), text: "", syntax: "plain", createdAt: now, updatedAt: now });
   await transact("readwrite", store => store.put(note));
   notes.unshift(note);
   noteSearch.value = "";
@@ -464,10 +541,16 @@ function scheduleSave() {
   if (!maxSaveTimer) maxSaveTimer = setTimeout(() => saveActiveNote(), MAX_SAVE_MS);
 }
 
+function markNoteRevision() {
+  // One causal revision per saved batch, not one ancestor for every keystroke.
+  if (!dirty || activeNote.revision === sealedRevision) activeNote = ScratchSync.editNote(activeNote, deviceId);
+}
+
 function queueSave() {
   if (!activeNote) return;
   activeNote.text = editor.value;
   activeNote.updatedAt = Date.now();
+  markNoteRevision();
   if (activeNote.syntax === "org") {
     editorHighlight.innerHTML = highlightOrgSource(editor.value);
     syncHighlightScroll();
@@ -478,14 +561,21 @@ function queueSave() {
   scheduleSave();
 }
 
-async function saveActiveNote() {
+function saveActiveNote() {
+  return queueLocalMutation(saveActiveNoteInternal);
+}
+
+async function saveActiveNoteInternal() {
+  if (saveInFlight) await saveInFlight;
   clearSaveTimers();
   if (!activeNote || !dirty || !db) return;
   const revisionBeingSaved = editRevision;
   const note = { ...activeNote };
+  sealedRevision = note.revision;
   saveStatus.textContent = "Saving…";
   try {
-    await transact("readwrite", store => store.put(note));
+    saveInFlight = transact("readwrite", store => store.put(note));
+    await saveInFlight;
     const index = notes.findIndex(item => item.id === note.id);
     if (index >= 0) notes[index] = note;
     if (revisionBeingSaved === editRevision) {
@@ -500,21 +590,43 @@ async function saveActiveNote() {
     console.error("Could not save note", error);
     saveStatus.textContent = "Save failed";
     dirty = true;
+  } finally {
+    saveInFlight = null;
   }
 }
 
-async function flushSave() {
-  if (dirty) await saveActiveNote();
+function flushSave() {
+  return queueLocalMutation(flushSaveInternal);
 }
 
-async function removeNote(id, ask = true) {
+async function flushSaveInternal() {
+  if (saveInFlight) await saveInFlight;
+  if (dirty) await saveActiveNoteInternal();
+  if (dirty) throw new Error("Local save failed. No sync or export was performed.");
+}
+
+function removeNote(id, ask = true) {
+  return queueLocalMutation(() => commitRemovedNote(id, ask));
+}
+
+async function commitRemovedNote(id, ask) {
+  await flushSaveInternal();
   const note = notes.find(item => item.id === id);
   if (!note) return;
   if (ask && !confirm(`Delete “${noteHeading(note.text)}”?`)) return;
-  clearSaveTimers();
-  dirty = false;
-  await transact("readwrite", store => store.delete(id));
+  if (activeNote?.id === id) { clearSaveTimers(); dirty = false; }
+  const deletion = { id, deletedAt: Date.now(), deviceId, deviceName: stashConfig.device || "This device", note: { ...note } };
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction([NOTES_STORE, DELETIONS_STORE], "readwrite");
+    transaction.objectStore(NOTES_STORE).delete(id);
+    transaction.objectStore(DELETIONS_STORE).put(deletion);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+  tombstones = [...tombstones.filter(item => item.id !== id), deletion];
   notes = notes.filter(item => item.id !== id);
+  if (ask || note.text.trim()) showDeleteUndo(note);
   scheduleStashBackup();
   if (activeNote?.id === id) {
     activeNote = null;
@@ -553,9 +665,11 @@ async function shareActiveNote() {
 function makeBackupPayload() {
   return {
     format: "scratch-backup",
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     notes,
+    tombstones,
+    sourceDevice: { id: deviceId, name: stashConfig.device || "This device" },
     settings
   };
 }
@@ -578,16 +692,20 @@ function validStashDevice(value) {
 }
 
 function stashObjectUrl() {
-  return `${stashConfig.baseUrl}/v1/scratch/${encodeURIComponent(stashConfig.device)}/backup`;
+  return `${stashConfig.baseUrl}/v1/scratch/${encodeURIComponent(deviceId)}/backup`;
 }
 
-async function fetchWithTimeout(url, options = {}) {
+async function fetchWithTimeout(url, options = {}, responseType = "json", timeoutMs = STASH_FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), STASH_FETCH_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    // Keep the abort deadline alive through body consumption, not only headers.
+    const data = response.ok ? await response[responseType]() : null;
+    if (!response.ok) await response.body?.cancel();
+    return { response, data };
   } catch (error) {
-    if (error?.name === "AbortError") throw new Error("Stash did not respond within 12 seconds.");
+    if (controller.signal.aborted) throw new Error(`Stash did not respond within ${timeoutMs / 1000} seconds.`);
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -597,13 +715,15 @@ async function fetchWithTimeout(url, options = {}) {
 function renderStashStatus() {
   stashUrlInput.value = stashConfig.baseUrl;
   stashDeviceInput.value = stashConfig.device;
-  stashBackupButton.disabled = !stashConfig.enabled || stashBackupRunning;
+  stashBackupButton.disabled = !stashConfig.enabled || stashBackupRunning || stashSyncRunning;
+  if ($("#stash-sync-button")) $("#stash-sync-button").disabled = !stashConfig.enabled || stashBackupRunning || stashSyncRunning;
+  stashSaveButton.disabled = stashBackupRunning || stashSyncRunning;
   if (!stashConfig.enabled) {
     stashStatus.textContent = "Not configured. Backups remain local until Stash is set up.";
   } else if (stashBackupRunning) {
     stashStatus.textContent = `Backing up ${notes.length} note${notes.length === 1 ? "" : "s"} as ${stashConfig.device}…`;
   } else if (stashConfig.lastError) {
-    stashStatus.textContent = `Backup pending: ${stashConfig.lastError}`;
+    stashStatus.textContent = `Notes remain local. Backup pending: ${stashConfig.lastError} Check Tailscale and retry. In Safari, try View → Reload and Show IP Address.`;
   } else if (stashConfig.lastSuccess) {
     stashStatus.textContent = `Last backed up ${formatDate(stashConfig.lastSuccess)} as ${stashConfig.device}.`;
   } else {
@@ -619,9 +739,8 @@ async function testAndSaveStash() {
     const baseUrl = normalizeStashUrl(stashUrlInput.value);
     const device = stashDeviceInput.value.trim();
     if (!validStashDevice(device)) throw new Error("Use letters, numbers, dots, underscores or hyphens for the device name.");
-    const response = await fetchWithTimeout(`${baseUrl}/v1/health`, { cache: "no-store" });
+    const { response, data: health } = await fetchWithTimeout(`${baseUrl}/v1/health`, { cache: "no-store" });
     if (!response.ok) throw new Error(`Stash returned HTTP ${response.status}.`);
-    const health = await response.json();
     if (health?.service !== "stash" || health?.status !== "ok") throw new Error("That address did not identify itself as Stash.");
     const changedDestination = baseUrl !== stashConfig.baseUrl || device !== stashConfig.device;
     stashConfig = { ...stashConfig, enabled: true, baseUrl, device, lastError: "" };
@@ -638,8 +757,8 @@ async function testAndSaveStash() {
   }
 }
 
-async function backupToStash(force = false) {
-  if (!stashConfig.enabled || stashBackupRunning || !navigator.onLine) return false;
+async function backupToStash(force = false, fromSync = false) {
+  if (!stashConfig.enabled || stashBackupRunning || (stashSyncRunning && !fromSync) || !navigator.onLine) return false;
   if (!force && Date.now() - stashConfig.lastSuccess < STASH_BACKUP_INTERVAL_MS) return false;
   stashBackupRunning = true;
   stashConfig.lastError = "";
@@ -648,20 +767,21 @@ async function backupToStash(force = false) {
     await flushSave();
     const payload = makeBackupPayload();
     const body = JSON.stringify(payload);
-    const hash = await sha256(JSON.stringify({ notes, settings }));
+    const hash = await sha256(JSON.stringify({ notes: payload.notes, tombstones: payload.tombstones, settings: payload.settings }));
     if (!force && hash === stashConfig.lastHash) {
       stashConfig.lastSuccess = Date.now();
       stashConfig.lastError = "";
       saveStashConfig();
       return true;
     }
-    const response = await fetchWithTimeout(stashObjectUrl(), {
+    const { response } = await fetchWithTimeout(stashObjectUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body
     });
     if (!response.ok) throw new Error(`Stash returned HTTP ${response.status}.`);
-    await response.json();
+    const { response: check, data: storedBody } = await fetchWithTimeout(`${stashObjectUrl()}/latest`, { cache: "no-store" }, "text");
+    if (!check.ok || storedBody !== body) throw new Error("Stash upload could not be verified. Your local notes are safe.");
     stashConfig.lastSuccess = Date.now();
     stashConfig.lastHash = hash;
     stashConfig.lastError = "";
@@ -673,6 +793,127 @@ async function backupToStash(force = false) {
     return false;
   } finally {
     stashBackupRunning = false;
+    renderStashStatus();
+  }
+}
+
+function renderDeletedNotes() {
+  const container = $("#deleted-notes");
+  if (!container) return;
+  container.replaceChildren();
+  if (!tombstones.length) { container.textContent = "No recorded deletions."; return; }
+  for (const deletion of [...tombstones].sort((a, b) => b.deletedAt - a.deletedAt)) {
+    const recovered = new Map();
+    for (const note of [deletion.note, ...(deletion.versions || [])]) {
+      if (note && typeof note.text === "string") recovered.set(`${note.text}\u0000${note.syntax}`, note);
+    }
+    const label = document.createElement("p");
+    label.textContent = `Deleted ${formatDate(deletion.deletedAt)} · ${deletion.deviceName || deletion.deviceId || "Unknown device"}`;
+    container.append(label);
+    for (const note of recovered.values()) {
+      const button = document.createElement("button");
+      button.type = "button"; button.className = "wide-button";
+      button.textContent = `Restore copy · ${noteHeading(note.text)}`;
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        try { await restoreDeletedNote(note); button.textContent = "Copy restored"; }
+        catch (error) { button.disabled = false; alert(error.message); }
+      });
+      container.append(button);
+    }
+  }
+}
+
+let mutationQueue = Promise.resolve();
+
+function queueLocalMutation(operation) {
+  // Own both the IndexedDB commit and its in-memory replacement. Network/file
+  // reads use snapshotQueue instead, so they never block local writing.
+  const result = mutationQueue.then(operation);
+  mutationQueue = result.catch(() => {});
+  return result;
+}
+
+function applyMergedSnapshot(remotes) {
+  return queueLocalMutation(() => commitMergedSnapshot(remotes));
+}
+
+async function commitMergedSnapshot(remotes) {
+  // Internal operations must not enqueue behind the transaction they own.
+  await flushSaveInternal();
+  const merged = ScratchSync.mergeSnapshots({ notes, tombstones }, remotes);
+  // Briefly prevent input while the atomic local transaction commits.
+  const app = $("#app");
+  app.inert = true;
+  try {
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction([NOTES_STORE, DELETIONS_STORE], "readwrite");
+      const store = transaction.objectStore(NOTES_STORE);
+      const retained = new Set(merged.notes.map(note => note.id));
+      notes.forEach(note => { if (!retained.has(note.id)) store.delete(note.id); });
+      merged.notes.forEach(note => store.put(note));
+      merged.tombstones.forEach(item => transaction.objectStore(DELETIONS_STORE).put(item));
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+    notes = merged.notes;
+    tombstones = merged.tombstones;
+    if (activeNote) {
+      activeNote = notes.find(note => note.id === activeNote.id) || null;
+      if (activeNote) { editor.value = activeNote.text; syncOrgPresentation(); }
+      else { editorView.hidden = true; listView.hidden = false; history.replaceState({}, "", location.pathname + location.search); }
+    }
+    sortNotes(); renderNotes(); renderDeletedNotes();
+    return merged.report;
+  } finally { app.inert = false; }
+}
+
+let snapshotQueue = Promise.resolve();
+
+function queueSnapshotOperation(operation) {
+  const result = snapshotQueue.then(operation);
+  snapshotQueue = result.catch(() => {});
+  return result;
+}
+
+function syncWithStash() {
+  return queueSnapshotOperation(runStashSync);
+}
+
+async function runStashSync() {
+  if (stashSyncRunning || stashBackupRunning || !stashConfig.enabled) return;
+  const status = $("#sync-status");
+  if (!navigator.onLine) { status.textContent = "Offline. Notes remain saved locally; retry sync when connected."; return; }
+  stashSyncRunning = true;
+  status.textContent = "Saving a backup before sync…";
+  renderStashStatus();
+  try {
+    if (!await backupToStash(true, true)) throw new Error(stashConfig.lastError || "Pre-sync backup failed. No notes were merged.");
+    status.textContent = "Downloading device backups…";
+    const { response, data: index } = await fetchWithTimeout(`${stashConfig.baseUrl}/v1/scratch/devices`, { cache: "no-store" });
+    if (response.status === 404) throw new Error("This Stash server needs the device-discovery update before it can sync. Backup still works.");
+    if (!response.ok) throw new Error(`Device discovery returned HTTP ${response.status}.`);
+    if (!Array.isArray(index.devices)) throw new Error("Stash returned an invalid device list.");
+    const remotes = [];
+    const seen = new Set();
+    for (const entry of index.devices) {
+      if (!entry || !validStashDevice(entry.device) || !Array.isArray(entry.types)) throw new Error("Stash returned an invalid device entry.");
+      if (entry.device === deviceId || seen.has(entry.device) || !entry.types.includes("backup")) continue;
+      seen.add(entry.device);
+      const { response: result, data: snapshot } = await fetchWithTimeout(`${stashConfig.baseUrl}/v1/scratch/${encodeURIComponent(entry.device)}/backup/latest`, { cache: "no-store" });
+      if (!result.ok) throw new Error(`Could not download ${entry.device}: HTTP ${result.status}. No notes were merged.`);
+      if (snapshot?.format !== "scratch-backup" || ![1, 2, 3].includes(snapshot.version)) throw new Error(`Unrecognised backup from ${entry.device}. No notes were merged.`);
+      remotes.push(decodeBackupSnapshot(snapshot));
+    }
+    const report = await applyMergedSnapshot(remotes);
+    const summary = `Added ${report.added}, updated ${report.updated}, deleted ${report.deleted}; ${report.conflicts} conflict${report.conflicts === 1 ? "" : "s"} preserved.`;
+    if (!await backupToStash(true, true)) { status.textContent = `Merged locally. ${summary} Merged backup pending: ${stashConfig.lastError}`; return; }
+    status.textContent = `Sync complete. ${summary}`;
+  } catch (error) {
+    status.textContent = `Sync stopped: ${error.message} Notes remain local; check Tailscale and retry.`;
+  } finally {
+    stashSyncRunning = false;
     renderStashStatus();
   }
 }
@@ -696,37 +937,40 @@ async function exportBackup() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function importBackup(file) {
-  let data;
-  try { data = JSON.parse(await file.text()); } catch { alert("That file is not valid JSON."); return; }
-  if (data?.format !== "scratch-backup" || !Array.isArray(data.notes)) {
-    alert("That does not look like a Scratch backup.");
-    return;
-  }
-  if (!confirm(`Import ${data.notes.length} note${data.notes.length === 1 ? "" : "s"}? Existing notes will be kept.`)) return;
+function decodeBackupSnapshot(data) {
+  if (data?.format !== "scratch-backup" || ![1, 2, 3].includes(data.version) || !Array.isArray(data.notes)) throw new Error("That is not a supported Scratch backup.");
+  const snapshot = {
+    notes: data.notes.map(note => note && note.syntax === undefined && data.version < 3 ? { ...note, syntax: "plain" } : note),
+    tombstones: data.tombstones === undefined && data.version < 3 ? [] : data.tombstones
+  };
+  // Validate the whole snapshot before any write. Never silently filter invalid notes.
+  ScratchSync.mergeSnapshots({ notes: [], tombstones: [] }, [snapshot]);
+  return snapshot;
+}
 
-  const validNotes = data.notes.filter(note => note && typeof note.id === "string" && typeof note.text === "string").map(note => ({
-    id: note.id,
-    text: note.text,
-    syntax: note.syntax === "org" ? "org" : "plain",
-    createdAt: Number(note.createdAt) || Date.now(),
-    updatedAt: Number(note.updatedAt) || Date.now()
-  }));
-  await new Promise((resolve, reject) => {
-    const transaction = db.transaction(NOTES_STORE, "readwrite");
-    const store = transaction.objectStore(NOTES_STORE);
-    validNotes.forEach(note => store.put(note));
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-  if (data.settings && typeof data.settings === "object") {
-    settings = { ...DEFAULT_SETTINGS, ...data.settings };
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    applySettings();
-  }
-  await loadNotes();
-  scheduleStashBackup(1000);
-  alert(`Imported ${validNotes.length} note${validNotes.length === 1 ? "" : "s"}.`);
+function importBackup(file) {
+  // Reserve the shared import/sync queue before reading the file asynchronously.
+  return queueSnapshotOperation(() => runBackupImport(file));
+}
+
+async function runBackupImport(file) {
+  try {
+    const data = JSON.parse(await file.text());
+    const snapshot = decodeBackupSnapshot(data);
+    if (!confirm(`Merge ${snapshot.notes.length} notes and ${snapshot.tombstones.length} deletion records? Conflicting text will be kept; recorded deletions will apply with recovery copies.`)) return;
+    const report = await applyMergedSnapshot([snapshot]);
+    if (data.settings && typeof data.settings === "object") {
+      const choices = { size: ["large", "small", "xsmall"], font: ["sans", "mono", "univers", "univers-black", "univers-extended"], sort: ["modified", "created"] };
+      for (const key of Object.keys(DEFAULT_SETTINGS)) {
+        const value = data.settings[key];
+        if (choices[key] ? choices[key].includes(value) : typeof value === "boolean") settings[key] = value;
+      }
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      applySettings(); sortNotes(); renderNotes();
+    }
+    scheduleStashBackup(1000);
+    alert(`Import complete. Added ${report.added}, updated ${report.updated}, deleted ${report.deleted}; ${report.conflicts} conflicts preserved.`);
+  } catch (error) { alert(`Import stopped: ${error.message}`); }
 }
 
 async function updateStorageStatus(requestPersistence = false) {
@@ -740,7 +984,7 @@ async function updateStorageStatus(requestPersistence = false) {
     const estimate = await navigator.storage.estimate?.();
     const usage = estimate?.usage ? `${Math.max(1, Math.round(estimate.usage / 1024))} KB used. ` : "";
     storageStatus.textContent = persistent
-      ? `${usage}Persistent local storage is enabled. Nothing is synced.`
+      ? `${usage}Persistent local storage is enabled. Stash backup and manual sync are optional.`
       : `${usage}Stored locally in Safari. Export backups occasionally.`;
   } catch {
     storageStatus.textContent = "Stored locally in this browser. Export backups occasionally.";
@@ -765,6 +1009,23 @@ function syncVisualViewport() {
 }
 
 function wireEvents() {
+  $("#undo-delete")?.addEventListener("click", async () => {
+    if (!undoNote) return;
+    await restoreDeletedNote(undoNote);
+    clearTimeout(undoTimer); undoNote = null; $("#delete-notice").hidden = true;
+  });
+  for (const dialog of [settingsDialog, dataDialog]) {
+    let startedOutside = false;
+    const outside = event => {
+      const rect = dialog.getBoundingClientRect();
+      return event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
+    };
+    dialog.addEventListener("pointerdown", event => { startedOutside = event.target === dialog && outside(event); });
+    dialog.addEventListener("click", event => {
+      if (startedOutside && event.target === dialog && outside(event)) dialog.close();
+      startedOutside = false;
+    });
+  }
   searchButton?.addEventListener("click", () => setSearchOpen(searchControls.hidden));
   $("#clear-search")?.addEventListener("click", () => {
     noteSearch.value = "";
@@ -803,6 +1064,7 @@ function wireEvents() {
     dataDialog.showModal();
     updateStorageStatus(true);
     renderStashStatus();
+    renderDeletedNotes();
   });
   document.querySelectorAll("[data-setting]").forEach(button => {
     button.addEventListener("click", () => updateSetting(button.dataset.setting, button.dataset.value));
@@ -814,6 +1076,7 @@ function wireEvents() {
   $("#import-button").addEventListener("click", () => importInput.click());
   stashSaveButton.addEventListener("click", testAndSaveStash);
   stashBackupButton.addEventListener("click", () => backupToStash(true));
+  $("#stash-sync-button")?.addEventListener("click", syncWithStash);
   importInput.addEventListener("change", async () => {
     const [file] = importInput.files;
     if (file) await importBackup(file);

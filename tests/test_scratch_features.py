@@ -22,6 +22,10 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertIn("STASH_FETCH_TIMEOUT_MS", self.js)
         self.assertIn("fetchWithTimeout(`${baseUrl}/v1/health`", self.js)
         self.assertIn("fetchWithTimeout(stashObjectUrl()", self.js)
+        helper = self.js[self.js.index("async function fetchWithTimeout"):self.js.index("function renderStashStatus")]
+        self.assertIn('responseType = "json", timeoutMs = STASH_FETCH_TIMEOUT_MS', helper)
+        self.assertLess(helper.index('await response[responseType]()'), helper.index('clearTimeout(timeout)'))
+        self.assertIn('controller.signal.aborted', helper)
 
     def test_stash_setup_and_status_controls_exist(self):
         for control in ("stash-url", "stash-device", "stash-save-button", "stash-backup-button", "stash-status"):
@@ -72,12 +76,12 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertIn('.list-controls.searching', self.css)
 
     def test_shell_assets_are_versioned_together(self):
-        self.assertIn('href="styles.css?v=15"', self.html)
-        self.assertIn('src="app.js?v=15"', self.html)
+        self.assertIn('href="styles.css?v=16"', self.html)
+        self.assertIn('src="app.js?v=16"', self.html)
         sw = (ROOT / 'scratch' / 'sw.js').read_text()
-        self.assertIn('"./styles.css?v=15"', sw)
-        self.assertIn('"./app.js?v=15"', sw)
-        self.assertIn('scratch-shell-v16', sw)
+        self.assertIn('"./styles.css?v=16"', sw)
+        self.assertIn('"./app.js?v=16"', sw)
+        self.assertIn('scratch-shell-v17', sw)
 
     def test_univers_regular_and_black_are_used_for_ui_only(self):
         self.assertRegex(self.css, r'(?s)@font-face\s*\{\s*font-family: "Scratch Univers";\s*src: url\("fonts/U-Black.woff2"\).*?font-weight: 700;')
@@ -192,7 +196,7 @@ class ScratchFeatureTests(unittest.TestCase):
 
     def test_service_worker_cache_is_advanced(self):
         sw = (ROOT / "scratch" / "sw.js").read_text()
-        self.assertIn('scratch-shell-v16', sw)
+        self.assertIn('scratch-shell-v17', sw)
         for filename in ('U.woff2', 'U-Black.woff2', 'U-ExtraBlackExt.woff2'):
             self.assertIn(f'fonts/{filename}', sw)
 

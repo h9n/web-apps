@@ -156,7 +156,12 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   padding: 0 0 var(--safe-bottom);
   list-style: none;
 }
-.note-row { border-bottom: 1px solid var(--line); }
+.note-row { border-bottom: 1px solid var(--line); position: relative; overflow: hidden; }
+.note-row .note-button { position: relative; background: var(--bg); touch-action: pan-y; transition: transform .15s ease; }
+.note-row.swiped .note-button { transform: translateX(-88px); }
+.swipe-delete { position: absolute; inset: 0 0 0 auto; width: 88px; border: 0; background: var(--danger); color: #000; font-weight: 700; }
+.swipe-delete:focus-visible { z-index: 2; }
+#delete-notice { position: fixed; z-index: 10; bottom: calc(16px + var(--safe-bottom)); left: 16px; right: 16px; max-width: 668px; margin-inline: auto; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
 .note-button {
   display: block;
   width: 100%;

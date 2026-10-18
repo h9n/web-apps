@@ -9,10 +9,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Scratch">
-  <meta name="description" content="A private, local-only plain-text scratchpad.">
+  <meta name="description" content="A local-first plain-text scratchpad with optional backup and sync.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/caret-180.png">
-  <link rel="stylesheet" href="styles.css?v=15">
+  <link rel="stylesheet" href="styles.css?v=16">
   <title>Scratch</title>
 </head>
 <body>
@@ -143,10 +143,23 @@
         <input id="stash-device" class="text-field" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="hamphone" maxlength="64">
         <button id="stash-save-button" class="wide-button" type="button">Test and save</button>
         <button id="stash-backup-button" class="wide-button" type="button" disabled>Back up now</button>
+        <button id="stash-sync-button" class="wide-button" type="button" disabled>Sync now</button>
+        <p id="sync-status" role="status">Sync is manual. Downloads the latest backup from each device; conflicting edits are kept separately.</p>
+      </section>
+      <section class="data-section" aria-labelledby="deleted-heading">
+        <h3 id="deleted-heading">Deleted notes</h3>
+        <p>Deletion history is kept for sync. Restore makes a new copy.</p>
+        <div id="deleted-notes"></div>
+      </section>
+      <section class="data-section" aria-labelledby="tags-heading">
+        <h3 id="tags-heading">Tags, without the machinery</h3>
+        <p>Write #ideas or #receptacle anywhere in a note, then search for that tag. Tags are just your text, so they travel with exports and sync.</p>
       </section>
     </form>
   </dialog>
 
-  <script src="app.js?v=15" defer></script>
+  <div id="delete-notice" role="status" hidden><span>Note deleted</span><button id="undo-delete" class="text-button" type="button">Undo</button></div>
+  <script src="sync.js?v=16" defer></script>
+  <script src="app.js?v=16" defer></script>
 </body>
 </html>
