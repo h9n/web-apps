@@ -81,6 +81,21 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 #list-view > .topbar, .list-controls { flex: 0 0 auto; }
 [hidden] { display: none !important; }
 
+#sync-reminder {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  padding: 4px calc(20px + var(--safe-right)) 4px calc(20px + var(--safe-left));
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 14px;
+}
+#sync-reminder > div { display: flex; gap: 12px; }
+#sync-reminder button { min-height: 44px; }
+
 .topbar {
   min-height: calc(64px + var(--safe-top));
   padding: calc(12px + var(--safe-top)) calc(16px + var(--safe-right)) 10px calc(20px + var(--safe-left));

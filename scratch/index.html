@@ -12,7 +12,7 @@
   <meta name="description" content="A local-first plain-text scratchpad with optional backup and sync.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/caret-180.png">
-  <link rel="stylesheet" href="styles.css?v=17">
+  <link rel="stylesheet" href="styles.css?v=18">
   <title>Scratch</title>
 </head>
 <body>
@@ -40,6 +40,10 @@
         </div>
       </div>
 
+      <div id="sync-reminder" role="status" hidden>
+        <span>Time to sync your notes?</span>
+        <div><button id="sync-reminder-now" class="text-button" type="button">Sync now</button><button id="sync-reminder-later" class="text-button" type="button">Not now</button></div>
+      </div>
       <div id="conflict-summary" role="status" hidden>
         <span id="conflict-count"></span>
         <button id="review-conflicts-button" class="text-button" type="button">Show conflicts</button>
@@ -182,7 +186,7 @@
     </section>
   </dialog>
   <div id="delete-notice" role="status" hidden><span>Note deleted</span><button id="undo-delete" class="text-button" type="button">Undo</button></div>
-  <script src="sync.js?v=17" defer></script>
-  <script src="app.js?v=17" defer></script>
+  <script src="sync.js?v=18" defer></script>
+  <script src="app.js?v=18" defer></script>
 </body>
 </html>

@@ -74,6 +74,98 @@ let conflictSession = null;
 let conflictResolving = false;
 const viewportBaselines = { portrait: 0, landscape: 0 };
 
+const REMINDER_KEY = "scratch-sync-reminder-v1";
+const REMINDER_DAY_MS = 24 * 60 * 60 * 1000;
+
+function reminderRecords() {
+  try { return JSON.parse(localStorage.getItem(REMINDER_KEY) || "{}") || {}; }
+  catch { return {}; }
+}
+
+function reminderRecord(endpoint) {
+  const records = reminderRecords();
+  if (!records[endpoint]) {
+    records[endpoint] = { firstSeen: Date.now(), lastSync: 0, snoozedUntil: 0 };
+    localStorage.setItem(REMINDER_KEY, JSON.stringify(records));
+  }
+  return records[endpoint];
+}
+
+function completeSyncReminder(endpoint) {
+  const records = reminderRecords();
+  records[endpoint] = { ...reminderRecord(endpoint), lastSync: Date.now(), snoozedUntil: 0 };
+  localStorage.setItem(REMINDER_KEY, JSON.stringify(records));
+  reminderGeneration += 1;
+  refreshSyncReminder();
+}
+
+function snoozeSyncReminder() {
+  const endpoint = normalizeStashUrl(stashConfig.baseUrl);
+  const records = reminderRecords();
+  records[endpoint] = { ...reminderRecord(endpoint), snoozedUntil: Date.now() + REMINDER_DAY_MS };
+  localStorage.setItem(REMINDER_KEY, JSON.stringify(records));
+  refreshSyncReminder();
+}
+
+const REMINDER_HEALTH_MS = 5 * 60 * 1000;
+let reminderGeneration = 0;
+let reminderFlight = false;
+let reminderConfig = "";
+let reminderHealth = null;
+let reminderAttempt = null;
+let reminderOffline = false;
+
+function invalidateReminderHealth() {
+  reminderGeneration += 1;
+  reminderHealth = null;
+  reminderAttempt = null;
+  $("#sync-reminder")?.setAttribute("hidden", "");
+}
+
+function reminderContext() {
+  if (!stashConfig.enabled) return null;
+  let endpoint;
+  try { endpoint = normalizeStashUrl(stashConfig.baseUrl); } catch { return null; }
+  const record = reminderRecord(endpoint);
+  const signature = JSON.stringify([endpoint, stashConfig.device, record]);
+  return { endpoint, signature, due: Date.now() - (record.lastSync || record.firstSeen) >= REMINDER_DAY_MS && !(record.snoozedUntil > Date.now()) };
+}
+
+function reminderCanShow() {
+  return !listView.hidden && editorView.hidden && !document.querySelector("dialog[open]") &&
+    document.visibilityState === "visible" && navigator.onLine && !reminderOffline && !stashSyncRunning && !stashBackupRunning;
+}
+
+async function refreshSyncReminder() {
+  const banner = $("#sync-reminder");
+  if (!banner) return;
+  banner.hidden = true;
+  const context = reminderContext();
+  const config = JSON.stringify([stashConfig.enabled, stashConfig.baseUrl, stashConfig.device]);
+  if (config !== reminderConfig) {
+    invalidateReminderHealth();
+    reminderConfig = config;
+  }
+  if (!context?.due || !reminderCanShow()) return;
+  if (reminderHealth?.endpoint === context.endpoint && Date.now() - reminderHealth.at < REMINDER_HEALTH_MS) {
+    banner.hidden = false;
+    return;
+  }
+  if (reminderFlight || (reminderAttempt !== null && Date.now() - reminderAttempt < REMINDER_HEALTH_MS)) return;
+  reminderFlight = true;
+  reminderAttempt = Date.now();
+  const generation = reminderGeneration;
+  try {
+    const { response, data } = await fetchWithTimeout(`${context.endpoint}/v1/health`, { cache: "no-store" });
+    if (generation !== reminderGeneration || reminderContext()?.signature !== context.signature || !reminderCanShow()) return;
+    if (response.ok && data?.service === "stash" && data?.status === "ok") {
+      reminderHealth = { endpoint: context.endpoint, at: Date.now() };
+      banner.hidden = false;
+    }
+  } catch { /* No backup status changes or alerts for reminder failures. */ }
+  finally { reminderFlight = false; }
+}
+
 function loadSettings() {
   try {
     return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
@@ -844,6 +936,8 @@ async function fetchWithTimeout(url, options = {}, responseType = "json", timeou
 }
 
 function renderStashStatus() {
+  reminderGeneration += 1;
+  refreshSyncReminder();
   stashUrlInput.value = stashConfig.baseUrl;
   stashDeviceInput.value = stashConfig.device;
   stashBackupButton.disabled = !stashConfig.enabled || stashBackupRunning || stashSyncRunning;
@@ -1016,6 +1110,7 @@ async function runStashSync() {
   if (stashSyncRunning || stashBackupRunning || !stashConfig.enabled) return;
   const status = $("#sync-status");
   if (!navigator.onLine) { status.textContent = "Offline. Notes remain saved locally; retry sync when connected."; return; }
+  const syncEndpoint = normalizeStashUrl(stashConfig.baseUrl);
   stashSyncRunning = true;
   status.textContent = "Saving a backup before sync…";
   renderStashStatus();
@@ -1040,6 +1135,7 @@ async function runStashSync() {
     const report = await applyMergedSnapshot(remotes);
     const summary = `Added ${report.added}, updated ${report.updated}, deleted ${report.deleted}; ${report.conflicts} unresolved extra version${report.conflicts === 1 ? "" : "s"} retained.`;
     if (!await backupToStash(true, true)) { status.textContent = `Merged locally. ${summary} Merged backup pending: ${stashConfig.lastError}`; return; }
+    if (syncEndpoint === normalizeStashUrl(stashConfig.baseUrl)) completeSyncReminder(syncEndpoint);
     status.textContent = `Sync complete. ${summary}`;
   } catch (error) {
     status.textContent = `Sync stopped: ${error.message} Notes remain local; check Tailscale and retry.`;
@@ -1140,6 +1236,15 @@ function syncVisualViewport() {
 }
 
 function wireEvents() {
+  $("#sync-reminder-now")?.addEventListener("click", syncWithStash);
+  $("#sync-reminder-later")?.addEventListener("click", snoozeSyncReminder);
+  document.addEventListener("visibilitychange", () => { reminderGeneration += 1; refreshSyncReminder(); });
+  window.addEventListener("offline", () => { reminderOffline = true; invalidateReminderHealth(); refreshSyncReminder(); });
+  window.addEventListener("online", () => { reminderOffline = false; refreshSyncReminder(); });
+  const reminderViews = new MutationObserver(() => { reminderGeneration += 1; refreshSyncReminder(); });
+  for (const view of [listView, editorView, ...document.querySelectorAll("dialog")]) {
+    reminderViews.observe(view, { attributes: true, attributeFilter: ["hidden", "open"] });
+  }
   $("#show-conflicts-button")?.addEventListener("click", showConflicts);
   $("#review-conflicts-button")?.addEventListener("click", () => {
     if (conflictsOnly) { conflictsOnly = false; renderNotes(); }
@@ -1251,6 +1356,7 @@ async function start() {
   try {
     db = await openDatabase();
     await loadNotes();
+    refreshSyncReminder();
     scheduleStashBackup(3000);
   } catch (error) {
     console.error(error);
