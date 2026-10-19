@@ -20,6 +20,7 @@ Then open `http://localhost:8080/`.
 
 ## Scratch: deliberately small conventions
 
+- In Home Screen mode, the Notes list and editor use full CSS viewport height when the software keyboard is absent; keyboard/search and pinch zoom still follow the visual viewport. Safe-area padding stays inside the scrollable controls. Geometry is refreshed on resume as well as viewport changes. Desktop WebKit/Chromium tests simulate underreported iPhone metrics; the exact physical-device symptom still requires iPhone confirmation.
 - Tap the shaded backdrop to close Writing or Data. Settings apply immediately.
 - Swipe a note left to reveal Delete. Undo is offered for ten seconds. Data → Deleted notes retains recoverable copies; restore creates a fresh note ID and keeps the deletion history.
 - Tags are ordinary text: write `#ideas` anywhere and search for `#ideas`. There is no separate tag database.
@@ -38,6 +39,7 @@ python3 -m unittest discover -s tests -v
 node --test scratch/tests/sync.test.cjs
 # With a local preview running on port 8788 and Playwright available:
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node tests/browser.cjs
+PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node tests/viewport-browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node tests/sync-browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node tests/compatibility-browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node tests/concurrency-browser.cjs

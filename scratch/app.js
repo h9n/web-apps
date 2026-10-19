@@ -72,7 +72,6 @@ let sealedRevision = null;
 let conflictsOnly = false;
 let conflictSession = null;
 let conflictResolving = false;
-const viewportBaselines = { portrait: 0, landscape: 0 };
 
 const REMINDER_KEY = "scratch-sync-reminder-v1";
 const REMINDER_DAY_MS = 24 * 60 * 60 * 1000;
@@ -1220,15 +1219,23 @@ async function updateStorageStatus(requestPersistence = false) {
 
 function syncVisualViewport() {
   const viewport = window.visualViewport;
-  const height = viewport?.height || window.innerHeight;
-  const top = viewport?.offsetTop || 0;
+  const visualHeight = viewport?.height || window.innerHeight;
+  const layoutHeight = $("#viewport-size")?.getBoundingClientRect().height || document.documentElement.clientHeight || window.innerHeight;
   const orientation = window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait";
-  const editorFocused = document.activeElement === editor;
-  if (!editorFocused || height > viewportBaselines[orientation]) {
-    viewportBaselines[orientation] = height;
-  }
-  const keyboardReduction = viewportBaselines[orientation] - height;
-  const keyboardVisible = keyboardReduction > 120 || height < 320;
+  const focused = document.activeElement;
+  const editorFocused = focused === editor;
+  const editableFocused = !focused?.readOnly && !focused?.disabled && (focused instanceof HTMLTextAreaElement ||
+    (focused instanceof HTMLInputElement && ["text", "search", "url", "email", "tel", "password", "number"].includes(focused.type)));
+  const unzoomed = Math.abs((viewport?.scale || 1) - 1) < 0.01;
+  const keyboardVisible = editableFocused && unzoomed &&
+    (layoutHeight - visualHeight > 120 || (visualHeight < 320 && visualHeight < layoutHeight));
+  const standalone = navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+  // Home Screen WebKit can report a viewport shorter by the status-bar inset.
+  // Use CSS full-screen geometry unless a keyboard or pinch zoom needs the
+  // visual viewport. Keep safe-area padding inside the full-height containers.
+  const useLayout = standalone && unzoomed && !keyboardVisible;
+  const height = useLayout ? layoutHeight : visualHeight;
+  const top = useLayout ? 0 : viewport?.offsetTop || 0;
   const hideBar = editorFocused && orientation === "landscape" && keyboardVisible;
   document.body.classList.toggle("landscape-keyboard", hideBar);
   document.documentElement.style.setProperty("--visual-height", `${height}px`);
@@ -1337,12 +1344,16 @@ function wireEvents() {
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden" && dirty) saveActiveNote();
-    if (document.visibilityState === "visible") scheduleStashBackup(1000);
+    if (document.visibilityState === "visible") {
+      syncVisualViewport();
+      scheduleStashBackup(1000);
+    }
   });
   window.addEventListener("online", () => scheduleStashBackup(1000));
   window.addEventListener("pagehide", () => { if (dirty) saveActiveNote(); });
   window.addEventListener("popstate", () => { if (!editorView.hidden) closeEditor({ fromHistory: true }); });
   window.addEventListener("resize", syncVisualViewport);
+  window.addEventListener("pageshow", syncVisualViewport);
   window.addEventListener("orientationchange", syncVisualViewport);
   window.visualViewport?.addEventListener("resize", syncVisualViewport);
   window.visualViewport?.addEventListener("scroll", syncVisualViewport);

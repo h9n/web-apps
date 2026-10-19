@@ -12,10 +12,11 @@
   <meta name="description" content="A local-first plain-text scratchpad with optional backup and sync.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/caret-180.png">
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="stylesheet" href="styles.css?v=19">
   <title>Scratch</title>
 </head>
 <body>
+  <div id="viewport-size" aria-hidden="true"></div>
   <main id="app">
     <section id="list-view" class="view" aria-labelledby="app-title">
       <header class="topbar">
@@ -186,7 +187,7 @@
     </section>
   </dialog>
   <div id="delete-notice" role="status" hidden><span>Note deleted</span><button id="undo-delete" class="text-button" type="button">Undo</button></div>
-  <script src="sync.js?v=18" defer></script>
-  <script src="app.js?v=18" defer></script>
+  <script src="sync.js?v=19" defer></script>
+  <script src="app.js?v=19" defer></script>
 </body>
 </html>
