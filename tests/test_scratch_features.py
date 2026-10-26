@@ -46,7 +46,7 @@ class ScratchFeatureTests(unittest.TestCase):
 
     def test_large_editor_size_is_restrained(self):
         self.assertIn("font-size: 24px", self.css)
-        self.assertNotIn("font-size: 30px", self.css)
+        self.assertNotRegex(self.css, r"(?s)#editor, #editor-highlight\s*\{[^}]*font-size: 30px")
 
     def test_editor_controls_exist(self):
         self.assertIn('data-value="xsmall"', self.html)
@@ -76,26 +76,28 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertIn('.list-controls.searching', self.css)
 
     def test_shell_assets_are_versioned_together(self):
-        self.assertIn('href="styles.css?v=19"', self.html)
-        self.assertIn('src="app.js?v=19"', self.html)
-        self.assertIn('src="sync.js?v=19"', self.html)
+        self.assertIn('href="styles.css?v=21"', self.html)
+        self.assertIn('src="app.js?v=21"', self.html)
+        self.assertIn('src="sync.js?v=21"', self.html)
         self.assertIn('id="sync-reminder"', self.html)
         self.assertIn('#sync-reminder', self.css)
         sw = (ROOT / 'scratch' / 'sw.js').read_text()
-        self.assertIn('"./styles.css?v=19"', sw)
-        self.assertIn('"./app.js?v=19"', sw)
-        self.assertIn('"./sync.js?v=19"', sw)
-        self.assertIn('scratch-shell-v20', sw)
+        self.assertIn('"./styles.css?v=21"', sw)
+        self.assertIn('"./app.js?v=21"', sw)
+        self.assertIn('"./sync.js?v=21"', sw)
+        self.assertIn('scratch-shell-v21', sw)
 
-    def test_univers_regular_and_black_are_used_for_ui_only(self):
+    def test_univers_regular_and_black_are_available_for_ui_and_default_writing(self):
         self.assertRegex(self.css, r'(?s)@font-face\s*\{\s*font-family: "Scratch Univers";\s*src: url\("fonts/U-Black.woff2"\).*?font-weight: 700;')
         self.assertRegex(self.css, r'(?s)body\s*\{[^}]*font-family: "Scratch Univers", Helvetica, Arial, sans-serif;')
         self.assertRegex(self.css, r'(?s)#settings-dialog, #data-dialog\s*\{[^}]*font: inherit;')
         self.assertRegex(self.css, r'(?s)\.text-field\s*\{[^}]*font: inherit;')
-        self.assertRegex(self.css, r'(?s)#reader\s*\{[^}]*font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;')
-        self.assertRegex(self.css, r'(?s)#editor, #editor-highlight\s*\{[^}]*font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;')
+        self.assertRegex(self.css, r'(?s)#reader\s*\{[^}]*font-family: "Scratch Univers", Helvetica, Arial, sans-serif;')
+        self.assertRegex(self.css, r'(?s)#editor, #editor-highlight\s*\{[^}]*font-family: "Scratch Univers", Helvetica, Arial, sans-serif;')
 
     def test_univers_font_options_use_real_web_faces(self):
+        self.assertNotIn('data-value="sans"', self.html)
+        self.assertNotIn('font: ["sans"', self.js)
         for value in ('univers', 'univers-black', 'univers-extended'):
             self.assertIn(f'data-value="{value}"', self.html)
             self.assertIn(f'body.font-{value} :is(#editor, #editor-highlight)', self.css)
@@ -146,8 +148,9 @@ class ScratchFeatureTests(unittest.TestCase):
         self.assertNotIn("border-left: 1px solid var(--line)", self.css)
         self.assertNotIn("border-right: 1px solid var(--line)", self.css)
 
-    def test_light_mode_follows_os(self):
-        self.assertIn("@media (prefers-color-scheme: light)", self.css)
+    def test_colour_modes_keep_black_canvas_in_both_os_appearances(self):
+        self.assertIn("color-scheme: dark", self.css)
+        self.assertNotIn("--bg: #fff", self.css)
         self.assertIn('media="(prefers-color-scheme: light)"', self.html)
         self.assertIn('media="(prefers-color-scheme: dark)"', self.html)
 
@@ -200,7 +203,7 @@ class ScratchFeatureTests(unittest.TestCase):
 
     def test_service_worker_cache_is_advanced(self):
         sw = (ROOT / "scratch" / "sw.js").read_text()
-        self.assertIn('scratch-shell-v20', sw)
+        self.assertIn('scratch-shell-v21', sw)
         for filename in ('U.woff2', 'U-Black.woff2', 'U-ExtraBlackExt.woff2'):
             self.assertIn(f'fonts/{filename}', sw)
 

@@ -28,7 +28,7 @@
 }
 
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
   --bg: #000;
   --ink: #fff;
   --muted: #929292;
@@ -133,7 +133,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   font-weight: 700;
   font-size: 16px;
 }
-.icon-button.primary { background: var(--ink); color: var(--bg); font-size: 28px; font-weight: 400; }
+.icon-button.primary { background: var(--surface-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); font-size: 28px; font-weight: 400; }
 .search-button { display: grid; place-items: center; background: transparent; }
 .search-button svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .search-button[aria-expanded="true"] { color: var(--system-blue); }
@@ -186,7 +186,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .note-row { border-bottom: 1px solid var(--line); position: relative; overflow: hidden; }
 .note-row .note-button { position: relative; background: var(--bg); touch-action: pan-y; transition: transform .15s ease; }
 .note-row.swiped .note-button { transform: translateX(-88px); }
-.swipe-delete { position: absolute; inset: 0 0 0 auto; width: 88px; border: 0; background: var(--danger); color: #000; font-weight: 700; }
+.swipe-delete { position: absolute; inset: 0 0 0 auto; width: 88px; border: 0; background: var(--surface-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); font-weight: 700; }
 .swipe-delete:focus-visible { z-index: 2; }
 #delete-notice { position: fixed; z-index: 10; bottom: calc(16px + var(--safe-bottom)); left: 16px; right: 16px; max-width: 668px; margin-inline: auto; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
 .note-button {
@@ -251,7 +251,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   color: var(--ink);
   caret-color: var(--system-blue);
   accent-color: var(--system-blue);
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  font-family: "Scratch Univers", Helvetica, Arial, sans-serif;
   font-size: 24px;
   line-height: 1.1;
   font-weight: 800;
@@ -298,7 +298,7 @@ body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: 
   min-height: 0;
   overflow: auto;
   padding: 22px calc(20px + var(--safe-right)) calc(40px + var(--safe-bottom)) calc(20px + var(--safe-left));
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  font-family: "Scratch Univers", Helvetica, Arial, sans-serif;
   font-size: 19px;
   line-height: 1.5;
   -webkit-overflow-scrolling: touch;
@@ -344,7 +344,7 @@ body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: 
 .setting-row small { display: block; max-width: 220px; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.25; font-weight: 500; }
 .segmented { display: flex; flex: 0 0 auto; padding: 3px; border-radius: 10px; background: var(--segment-bg); }
 .segmented button { min-height: 36px; border: 0; border-radius: 8px; padding: 0 11px; background: transparent; color: var(--muted); font-weight: 750; }
-.segmented button.active { background: var(--ink); color: var(--bg); }
+.segmented button.active { background: var(--surface-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
 .segmented.compact button { min-height: 30px; padding: 0 10px; font-size: 12px; }
 .font-options { flex-wrap: wrap; justify-content: flex-end; max-width: 260px; }
 .font-options button { font-size: 12px; padding-inline: 8px; }
@@ -365,27 +365,32 @@ body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: 
 
 body.landscape-keyboard .editor-bar { display: none; }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #fff;
-    --ink: #000;
-    --muted: #686868;
-    --surface: #f2f2f7;
-    --surface-2: #e9e9ee;
-    --line: #d8d8dc;
-    --danger: #ff3b30;
-    --system-blue: #007aff;
-    --topbar: rgba(255, 255, 255, .96);
-    --placeholder: #aaa;
-    --segment-bg: #e9e9ee;
-    --backdrop: rgba(0, 0, 0, .28);
-    --selection: rgba(0, 122, 255, .28);
-    --org-heading: #a05a00;
-    --org-marker: #8944ab;
-    --org-link: #0066cc;
-    --org-code: #16833b;
-    --org-meta: #777;
-  }
+/* A single animated foreground drives chrome, writing, syntax and controls. */
+:root {
+  --foreground: rgb(255, 255, 255);
+  --foreground-rgb: 255, 255, 255;
+  --ink: var(--foreground);
+  --muted: var(--foreground);
+  --placeholder: var(--foreground);
+  --danger: var(--foreground);
+  --system-blue: var(--foreground);
+  --org-heading: var(--foreground);
+  --org-marker: var(--foreground);
+  --org-link: var(--foreground);
+  --org-code: var(--foreground);
+  --org-meta: var(--foreground);
+  --selection: rgba(var(--foreground-rgb), .35);
+}
+.colour-button { display: grid; place-items: center; background: transparent; flex: 0 0 44px; }
+.colour-button svg { fill: none; stroke: currentColor; stroke-width: 1.7; }
+.colour-button path { fill: currentColor; stroke: none; }
+.switch span::after { background: var(--ink); }
+.switch input:checked + span::after { background: var(--bg); }
+#conflict-draft, #note-search, .text-field { caret-color: var(--ink); }
+::selection { background: var(--selection); }
+@media (max-width: 390px) {
+  .topbar-actions { gap: 4px; }
+  .topbar h1 { font-size: 30px; }
 }
 
 @media (min-width: 700px) {

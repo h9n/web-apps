@@ -16,7 +16,7 @@ const STASH_BACKUP_DELAY_MS = 30 * 1000;
 const STASH_FETCH_TIMEOUT_MS = 12000;
 const DEFAULT_SETTINGS = {
   size: "large",
-  font: "sans",
+  font: "univers",
   wrap: true,
   typing: true,
   sort: "modified"
@@ -167,7 +167,9 @@ async function refreshSyncReminder() {
 
 function loadSettings() {
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
+    const loaded = { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
+    if (!["mono", "univers", "univers-black", "univers-extended"].includes(loaded.font)) loaded.font = "univers";
+    return loaded;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -1186,7 +1188,7 @@ async function runBackupImport(file) {
     if (!confirm(`Merge ${snapshot.notes.length} notes and ${snapshot.tombstones.length} deletion records? Conflicting text will be kept; recorded deletions will apply with recovery copies.`)) return;
     const report = await applyMergedSnapshot([snapshot]);
     if (data.settings && typeof data.settings === "object") {
-      const choices = { size: ["large", "small", "xsmall"], font: ["sans", "mono", "univers", "univers-black", "univers-extended"], sort: ["modified", "created"] };
+      const choices = { size: ["large", "small", "xsmall"], font: ["mono", "univers", "univers-black", "univers-extended"], sort: ["modified", "created"] };
       for (const key of Object.keys(DEFAULT_SETTINGS)) {
         const value = data.settings[key];
         if (choices[key] ? choices[key].includes(value) : typeof value === "boolean") settings[key] = value;
@@ -1360,6 +1362,7 @@ function wireEvents() {
 }
 
 async function start() {
+  window.ScratchColours?.init($("#colour-button"));
   applySettings();
   renderStashStatus();
   syncVisualViewport();

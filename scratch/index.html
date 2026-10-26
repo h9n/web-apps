@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Scratch">
   <meta name="description" content="A local-first plain-text scratchpad with optional backup and sync.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/caret-180.png">
-  <link rel="stylesheet" href="styles.css?v=19">
+  <link rel="stylesheet" href="styles.css?v=21">
   <title>Scratch</title>
 </head>
 <body>
@@ -23,6 +23,7 @@
         <h1 id="app-title">Scratch</h1>
         <div class="topbar-actions">
           <button id="settings-button" type="button" hidden aria-hidden="true" tabindex="-1">Aa</button>
+          <button id="colour-button" class="icon-button colour-button" type="button" aria-label="Colour: White. Next: Red" title="White · tap for Red"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16Z"/></svg></button>
           <button id="data-button" class="text-button" type="button">Data</button>
           <button id="search-button" class="icon-button search-button" type="button" aria-label="Search notes" aria-expanded="false" aria-controls="search-controls"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></button>
           <button id="new-note-button" class="icon-button primary" type="button" aria-label="New note">＋</button>
@@ -93,7 +94,6 @@
       <div class="setting-row">
         <span>Typeface</span>
         <div class="segmented font-options" role="group" aria-label="Typeface">
-          <button type="button" data-setting="font" data-value="sans">Sans</button>
           <button type="button" data-setting="font" data-value="mono">Mono</button>
           <button type="button" data-setting="font" data-value="univers">Univers</button>
           <button type="button" data-setting="font" data-value="univers-black">U Black</button>
@@ -187,7 +187,8 @@
     </section>
   </dialog>
   <div id="delete-notice" role="status" hidden><span>Note deleted</span><button id="undo-delete" class="text-button" type="button">Undo</button></div>
-  <script src="sync.js?v=19" defer></script>
-  <script src="app.js?v=19" defer></script>
+  <script src="sync.js?v=21" defer></script>
+  <script src="colours.js?v=21" defer></script>
+  <script src="app.js?v=21" defer></script>
 </body>
 </html>
