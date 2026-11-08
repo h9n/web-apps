@@ -238,7 +238,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   overflow: hidden;
   background: var(--bg);
 }
-#editor, #editor-highlight {
+#editor, #editor-highlight, #editor-tag-links {
   display: block;
   width: 100%;
   height: 100%;
@@ -285,13 +285,20 @@ body.org-editing #editor::placeholder { -webkit-text-fill-color: var(--placehold
 .org-meta, .org-comment { color: var(--org-meta); }
 #editor::selection { background: var(--selection); }
 #editor::placeholder { color: var(--placeholder); }
-body.size-small :is(#editor, #editor-highlight) { font-size: 18px; line-height: 1.1; font-weight: 500; }
-body.size-xsmall :is(#editor, #editor-highlight) { font-size: 14px; line-height: 1.1; font-weight: 450; }
-body.font-mono :is(#editor, #editor-highlight) { font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace; }
-body.font-univers :is(#editor, #editor-highlight) { font-family: "Scratch Univers", Helvetica, Arial, sans-serif; font-weight: 400; }
-body.font-univers-black :is(#editor, #editor-highlight) { font-family: "Scratch Univers Black", Helvetica, Arial, sans-serif; font-weight: 700; }
-body.font-univers-extended :is(#editor, #editor-highlight) { font-family: "Scratch Univers Extended", Helvetica, Arial, sans-serif; font-weight: 900; }
-body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+body.size-small :is(#editor, #editor-highlight, #editor-tag-links) { font-size: 18px; line-height: 1.1; font-weight: 500; }
+body.size-xsmall :is(#editor, #editor-highlight, #editor-tag-links) { font-size: 14px; line-height: 1.1; font-weight: 450; }
+body.font-mono :is(#editor, #editor-highlight, #editor-tag-links) { font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace; }
+body.font-univers :is(#editor, #editor-highlight, #editor-tag-links) { font-family: "Scratch Univers", Helvetica, Arial, sans-serif; font-weight: 400; }
+body.font-univers-black :is(#editor, #editor-highlight, #editor-tag-links) { font-family: "Scratch Univers Black", Helvetica, Arial, sans-serif; font-weight: 700; }
+body.font-univers-extended :is(#editor, #editor-highlight, #editor-tag-links) { font-family: "Scratch Univers Extended", Helvetica, Arial, sans-serif; font-weight: 900; }
+body.no-wrap :is(#editor, #editor-highlight, #editor-tag-links) { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+
+#editor-tag-links { position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; background: transparent; color: transparent; }
+#editor-tag-links [data-tag] { text-decoration: underline; text-decoration-color: var(--ink); text-underline-offset: 3px; }
+#editor-tag-links [data-tag]:focus-visible { outline: 2px solid var(--ink); }
+#tag-links-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding-inline: 20px; border-bottom: 1px solid var(--line); }
+#tag-links-controls small { font-size: 11px; line-height: 1.25; }
+#tag-links-toggle { flex-shrink: 0; font-size: 12px; }
 
 #reader {
   flex: 1 1 auto;

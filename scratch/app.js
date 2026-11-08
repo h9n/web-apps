@@ -218,11 +218,93 @@ function syncOrgPresentation() {
   if (orgEnabled) editorHighlight.innerHTML = highlightOrgSource(editor.value);
   else editorHighlight.textContent = "";
   if (readerMode) renderReader();
+  renderEditorTagLinks();
+}
+
+let tagLinksEnabled = true;
+let tagPointer = null;
+
+function renderEditorTagLinks() {
+  const mirror = $("#editor-tag-links");
+  const matches = tagMatches(editor.value);
+  $("#tag-links-controls").hidden = readerMode || !matches.length;
+  mirror.hidden = !tagLinksEnabled || readerMode;
+  $("#tag-links-toggle").textContent = tagLinksEnabled ? "Tag links on" : "Tag links off";
+  $("#tag-links-toggle").setAttribute("aria-pressed", String(tagLinksEnabled));
+  const fragment = document.createDocumentFragment();
+  let start = 0;
+  const text = value => {
+    const span = document.createElement("span");
+    span.textContent = value;
+    span.setAttribute("aria-hidden", "true");
+    fragment.append(span);
+  };
+  for (const match of matches) {
+    text(editor.value.slice(start, match.index));
+    const link = document.createElement("span");
+    link.textContent = match[0];
+    link.dataset.tag = match[0];
+    link.setAttribute("role", "link");
+    link.tabIndex = 0;
+    link.setAttribute("aria-label", `Search notes for ${match[0]}`);
+    fragment.append(link);
+    start = match.index + match[0].length;
+  }
+  text(editor.value.slice(start) + "\n");
+  mirror.replaceChildren(fragment);
+  syncHighlightScroll();
+}
+
+function tagAtPoint(x, y) {
+  // Range rectangles preserve wrapped tags, unlike one bounding box across lines.
+  for (const link of $("#editor-tag-links").querySelectorAll("[data-tag]")) {
+    const range = document.createRange();
+    range.selectNodeContents(link);
+    if ([...range.getClientRects()].some(r => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)) return link.dataset.tag;
+  }
+  return null;
+}
+
+function wireEditorTagLinks() {
+  $("#tag-links-toggle").addEventListener("click", () => {
+    tagLinksEnabled = !tagLinksEnabled;
+    renderEditorTagLinks();
+  });
+  // Never intercept pointerdown, selection, dragging or scrolling. The textarea
+  // owns all gestures. Only a short, unmoved, collapsed-selection tap navigates.
+  editor.addEventListener("pointerdown", event => {
+    tagPointer = tagLinksEnabled && event.isPrimary && event.button === 0 && editor.selectionStart === editor.selectionEnd
+      ? { x: event.clientX, y: event.clientY, at: performance.now(), id: event.pointerId } : null;
+  });
+  editor.addEventListener("pointercancel", () => { tagPointer = null; });
+  editor.addEventListener("pointermove", event => {
+    if (tagPointer && Math.hypot(event.clientX - tagPointer.x, event.clientY - tagPointer.y) > 8) tagPointer = null;
+  });
+  editor.addEventListener("pointerup", event => {
+    const tap = tagPointer;
+    tagPointer = null;
+    if (!tap || tap.id !== event.pointerId || performance.now() - tap.at > 300 || Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 8 || editor.selectionStart !== editor.selectionEnd) return;
+    const tag = tagAtPoint(event.clientX, event.clientY);
+    if (tag) searchForTag(tag);
+  });
+  $("#editor-tag-links").addEventListener("click", event => {
+    const link = event.target.closest("[data-tag]");
+    if (link) searchForTag(link.dataset.tag);
+  });
+  $("#editor-tag-links").addEventListener("keydown", event => {
+    if (event.key === "Enter" && event.target.dataset.tag) {
+      event.preventDefault();
+      searchForTag(event.target.dataset.tag);
+    }
+  });
 }
 
 function syncHighlightScroll() {
+  tagPointer = null;
   editorHighlight.scrollTop = editor.scrollTop;
   editorHighlight.scrollLeft = editor.scrollLeft;
+  $("#editor-tag-links").scrollTop = editor.scrollTop;
+  $("#editor-tag-links").scrollLeft = editor.scrollLeft;
 }
 
 function setOrgSyntax(enabled) {
@@ -269,14 +351,28 @@ function renderReader() {
   }
 }
 
+let tagNavigationPending = false;
 async function searchForTag(tag) {
-  await closeEditor(); // Same queued flush and navigation as the Notes button.
-  conflictsOnly = false;
-  setSearchOpen(true);
-  noteSearch.value = tag;
-  noteSearch.setSelectionRange(tag.length, tag.length);
-  renderNotes();
-  noteSearch.blur(); // Show the matching list without summoning a mobile keyboard.
+  if (tagNavigationPending || !activeNote) return;
+  tagNavigationPending = true;
+  // Reserve the flush/navigation before yielding: native late typing cannot
+  // change the captured save, and repeated taps cannot queue duplicate closes.
+  const wasReadOnly = editor.readOnly;
+  editor.readOnly = true;
+  try {
+    await closeEditor(); // Same queued flush and navigation as the Notes button.
+    conflictsOnly = false;
+    setSearchOpen(true);
+    noteSearch.value = tag;
+    noteSearch.setSelectionRange(tag.length, tag.length);
+    renderNotes();
+    noteSearch.blur(); // Show results without summoning a mobile keyboard.
+  } catch {
+    saveStatus.textContent = "Save failed";
+  } finally {
+    editor.readOnly = wasReadOnly;
+    tagNavigationPending = false;
+  }
 }
 
 async function toggleReaderMode() {
@@ -926,6 +1022,7 @@ function markNoteRevision() {
 
 function queueSave() {
   if (!activeNote) return;
+  renderEditorTagLinks();
   activeNote.text = editor.value;
   activeNote.updatedAt = Date.now();
   markNoteRevision();
@@ -1400,6 +1497,7 @@ function syncVisualViewport() {
 
 function wireEvents() {
   wireTagCompletion(editor, "editor-tag-suggestions", editorView);
+  wireEditorTagLinks();
   wireTagCompletion(noteSearch, "search-tag-suggestions", listView);
   listControls.after($("#search-tag-suggestions"));
   $("#sync-reminder-now")?.addEventListener("click", syncWithStash);

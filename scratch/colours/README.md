@@ -1,11 +1,36 @@
-# Archived Scratch colour assets
+# Scratch colour assets
 
-These streams are retained unchanged as historical source assets only. Scratch
-v22 no longer offers or downloads 0dv modes and does not precache these files.
-Its fluorescent colours are copied exactly from ctrl_deck's `decks.json`:
-`#C7FF3E`, `#35E8FF`, `#FF4DA6`, `#A78BFA`, `#FF9257`.
-White, subdued red, and the slow colour wheel remain available. The playback
-notes below document the former v21 implementation, not the current app.
+## Current native neon loop (v23)
+
+`ctrl-deck-neon.30fps.10g.0dv` is a **new** headerless GRB asset, not a
+renamed archived personal mode. It visits the exact ctrl_deck colours in order:
+`#C7FF3E` → `#35E8FF` → `#FF4DA6` → `#A78BFA` → `#FF9257` → lime.
+Stops are two seconds apart, with cosine easing to linger near each colour;
+the full seamless cycle is ten seconds (300 frames, 900 bytes, 30 fps).
+`.10g` means gamma 1. Bytes are linear, with no brightness remapping.
+
+Reproduce or verify using only Python's standard library:
+
+```sh
+python3 scratch/colours/generate-neon.py
+python3 scratch/colours/generate-neon.py --check
+python3 -m unittest discover -s tests -p test_neon.py
+```
+
+SHA-256: `83037bffe990c96c88c9ada9d6f45196e441c8cbd21f9dec507f6d1ce39909c9`.
+The colour button offers Neon loop after Ember orange and before the slow
+colour wheel. White, subdued red and all five fixed neon options remain.
+The v23 shell precaches only the new neon stream, not the two archives below.
+Playback uses elapsed-time frame lookup, cancels while hidden/page-suspended,
+freezes for reduced motion (initially lime), and rejects stale load results.
+Downloads are bounded through response-body consumption. An unavailable or
+malformed stream leaves static lime and a working next-colour button.
+
+## Archived personal modes (not offered or precached)
+
+The following streams are retained unchanged as historical source assets only.
+The remaining notes document the former v21 implementation, not the current
+playback options. Do not reintroduce these personal modes.
 
 Headerless unsigned 8-bit **G, R, B** triples, one colour/frame (0dv), 30 fps.
 No dimensions, timestamps, padding, or embedded metadata. Frame `i` starts at
