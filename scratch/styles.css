@@ -365,6 +365,52 @@ body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: 
 
 body.landscape-keyboard .editor-bar { display: none; }
 
+/* Suggestions occupy their own bounded row: no overlay intercepts native editing. */
+.tag-suggestions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  max-height: min(132px, 24dvh);
+  overflow: auto;
+  padding: 4px calc(20px + var(--safe-right)) 4px calc(20px + var(--safe-left));
+  border-block: 1px solid var(--line);
+  background: var(--bg);
+}
+.tag-suggestions button {
+  min-height: 44px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 8px;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 16px;
+}
+.tag-suggestions button[aria-selected="true"] { background: var(--surface-2); outline: 2px solid var(--ink); outline-offset: -3px; }
+#reader { overflow-wrap: anywhere; }
+#reader.plain-reader { white-space: pre-wrap; }
+#reader .hashtag {
+  display: inline;
+  border: 0;
+  padding: 10px 0;
+  margin: -10px 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  white-space: inherit;
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+@media (max-width: 390px) {
+  .editor-bar { gap: 4px; padding-right: 10px; }
+  .editor-actions { gap: 4px; }
+  .save-status { font-size: 10px; }
+}
+
 /* A single animated foreground drives chrome, writing, syntax and controls. */
 :root {
   --foreground: rgb(255, 255, 255);

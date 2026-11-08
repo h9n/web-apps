@@ -210,15 +210,14 @@ function applySettings() {
 function syncOrgPresentation() {
   const orgEnabled = activeNote?.syntax === "org";
   orgToggle.checked = orgEnabled;
-  readerButton.hidden = !orgEnabled;
-  if (!orgEnabled) readerMode = false;
+  readerButton.hidden = false;
   readerButton.textContent = readerMode ? "Edit" : "Read";
   editorStage.hidden = readerMode;
   reader.hidden = !readerMode;
   document.body.classList.toggle("org-editing", orgEnabled && !readerMode);
   if (orgEnabled) editorHighlight.innerHTML = highlightOrgSource(editor.value);
   else editorHighlight.textContent = "";
-  if (readerMode) reader.innerHTML = renderOrgDocument(editor.value);
+  if (readerMode) renderReader();
 }
 
 function syncHighlightScroll() {
@@ -239,11 +238,52 @@ function setOrgSyntax(enabled) {
   scheduleSave();
 }
 
+function renderReader() {
+  const plain = activeNote?.syntax !== "org";
+  reader.classList.toggle("plain-reader", plain);
+  if (plain) reader.textContent = editor.value;
+  else reader.innerHTML = renderOrgDocument(editor.value);
+  // Walk text nodes only: never replace strings inside HTML attributes or links.
+  const walker = document.createTreeWalker(reader, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    if (node.parentElement.closest("a, code, button")) continue;
+    const matches = tagMatches(node.data);
+    if (!matches.length) continue;
+    const fragment = document.createDocumentFragment();
+    let start = 0;
+    for (const match of matches) {
+      fragment.append(node.data.slice(start, match.index));
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "hashtag";
+      button.dataset.tag = match[0];
+      button.textContent = match[0];
+      button.setAttribute("aria-label", `Search notes for ${match[0]}`);
+      fragment.append(button);
+      start = match.index + match[0].length;
+    }
+    fragment.append(node.data.slice(start));
+    node.replaceWith(fragment);
+  }
+}
+
+async function searchForTag(tag) {
+  await closeEditor(); // Same queued flush and navigation as the Notes button.
+  conflictsOnly = false;
+  setSearchOpen(true);
+  noteSearch.value = tag;
+  noteSearch.setSelectionRange(tag.length, tag.length);
+  renderNotes();
+  noteSearch.blur(); // Show the matching list without summoning a mobile keyboard.
+}
+
 async function toggleReaderMode() {
-  if (activeNote?.syntax !== "org") return;
+  if (!activeNote) return;
   if (!readerMode) {
     await flushSave();
-    reader.innerHTML = renderOrgDocument(editor.value);
+    renderReader();
     reader.scrollTop = editor.scrollTop;
     readerMode = true;
     editor.blur();
@@ -350,6 +390,10 @@ function renderOrgInline(value) {
     return protect(href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${caption}</a>` : caption);
   });
   text = text.replace(/([~=])([^\n]+?)\1/g, (_, marker, content) => protect(`<code>${content}</code>`));
+  // Underscores inside ordinary source tags are not Org emphasis markers.
+  for (const match of tagMatches(text).reverse()) {
+    text = text.slice(0, match.index) + match[0].replaceAll("_", "&#95;") + text.slice(match.index + match[0].length);
+  }
   const styles = [
     [/\*([^*\n]+)\*/g, "strong"],
     [/\/([^/\n]+)\//g, "em"],
@@ -472,6 +516,116 @@ function setSearchOpen(open) {
   }
 }
 
+// Tags remain ordinary source text; derive this index from live notes, never sync it.
+// A tag starts at a word boundary and accepts Unicode letters/marks/numbers, _ and -.
+function tagMatches(text) {
+  return [...text.matchAll(/(?<![\p{L}\p{M}\p{N}_/#])#[\p{L}\p{N}_][\p{L}\p{M}\p{N}_-]*/gu)];
+}
+
+function noteMatchesQuery(text, query) {
+  const folded = text.toLocaleLowerCase();
+  const tags = new Set(tagMatches(text).map(match => match[0].toLocaleLowerCase()));
+  return query.split(/\s+/).filter(Boolean).every(term =>
+    term.startsWith("#") ? tags.has(term) : folded.includes(term));
+}
+
+function currentTags() {
+  const texts = notes.map(note => note.id === activeNote?.id && !editorView.hidden ? editor.value : note.text);
+  return [...new Set(texts.flatMap(text => tagMatches(text).map(match => match[0].toLocaleLowerCase())))].sort((a, b) => a.localeCompare(b));
+}
+
+function wireTagCompletion(input, id, host) {
+  const panel = document.createElement("div");
+  panel.id = id;
+  panel.className = "tag-suggestions";
+  panel.setAttribute("role", "listbox");
+  panel.setAttribute("aria-label", "Matching hashtags");
+  panel.hidden = true;
+  host.append(panel);
+  input.setAttribute("aria-controls", id);
+  input.setAttribute("aria-autocomplete", "list");
+  input.setAttribute("aria-expanded", "false");
+  let choices = [];
+  let selected = -1;
+  let composing = false;
+  let range = null;
+  function hide() {
+    panel.hidden = true;
+    panel.replaceChildren();
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
+    choices = []; selected = -1; range = null;
+  }
+  function complete(index) {
+    if (!range || !choices[index]) return;
+    const tag = choices[index];
+    const { start, end } = range;
+    const space = /^\s/.test(input.value.slice(end)) ? "" : " ";
+    hide();
+    input.focus();
+    input.setSelectionRange(start, end);
+    // Native insertion retains the browser's undo stack (setRangeText does not).
+    // Use the standards-based replacement fallback if the editing command is unavailable.
+    if (!document.execCommand("insertText", false, tag + space)) {
+      input.setRangeText(tag + space, start, end, "end");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    // Reuse an existing separator rather than doubling spaces in mid-sentence.
+    const caret = start + tag.length + 1;
+    input.setSelectionRange(caret, caret);
+  }
+  function update() {
+    hide();
+    if (composing || document.activeElement !== input || input.selectionStart !== input.selectionEnd) return;
+    const caret = input.selectionStart;
+    const before = input.value.slice(0, caret);
+    const match = before.match(/(?<![\p{L}\p{M}\p{N}_/#])#[\p{L}\p{M}\p{N}_-]*$/u);
+    if (!match) return;
+    const suffix = input.value.slice(caret).match(/^[\p{L}\p{M}\p{N}_-]*/u)[0];
+    range = { start: match.index, end: caret + suffix.length };
+    const prefix = match[0].toLocaleLowerCase();
+    choices = currentTags().filter(tag => tag.startsWith(prefix) && tag !== prefix).slice(0, 8);
+    if (!choices.length) { hide(); return; }
+    choices.forEach((tag, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.id = `${id}-${index}`;
+      button.setAttribute("role", "option");
+      button.setAttribute("aria-selected", "false");
+      button.textContent = tag;
+      button.addEventListener("pointerdown", event => event.preventDefault());
+      button.addEventListener("click", () => complete(index));
+      panel.append(button);
+    });
+    panel.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+  input.addEventListener("input", update);
+  input.addEventListener("click", update);
+  input.addEventListener("keyup", event => {
+    if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) update();
+  });
+  input.addEventListener("compositionstart", () => { composing = true; hide(); });
+  input.addEventListener("compositionend", () => { composing = false; update(); });
+  input.addEventListener("blur", event => { if (!panel.contains(event.relatedTarget)) hide(); });
+  input.addEventListener("keydown", event => {
+    if (composing || event.isComposing || !choices.length) return;
+    if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      selected = selected < 0
+        ? (event.key === "ArrowDown" ? 0 : choices.length - 1)
+        : (selected + (event.key === "ArrowDown" ? 1 : -1) + choices.length) % choices.length;
+      [...panel.children].forEach((button, index) => button.setAttribute("aria-selected", String(index === selected)));
+      input.setAttribute("aria-activedescendant", `${id}-${selected}`);
+      panel.children[selected].scrollIntoView({ block: "nearest" });
+    } else if ((event.key === "Enter" || event.key === "Tab") && selected >= 0) {
+      event.preventDefault(); event.stopImmediatePropagation(); complete(selected);
+    } else if (event.key === "Escape") {
+      event.preventDefault(); hide();
+    }
+  });
+}
+
 function renderNotes() {
   notesList.replaceChildren();
   const query = noteSearch.value.trim().toLocaleLowerCase();
@@ -479,7 +633,7 @@ function renderNotes() {
   if (!roots.size) conflictsOnly = false;
   renderConflictIndicators(roots);
   const candidates = conflictsOnly ? notes.filter(note => roots.has(note.conflictOf || note.id)) : notes;
-  const visibleNotes = query ? candidates.filter(note => note.text.toLocaleLowerCase().includes(query)) : candidates;
+  const visibleNotes = query ? candidates.filter(note => noteMatchesQuery(note.text, query)) : candidates;
   emptyState.hidden = visibleNotes.length !== 0;
   notesList.hidden = visibleNotes.length === 0;
   emptyMessage.textContent = notes.length && query ? "No matching notes." : "Nothing here.";
@@ -1245,6 +1399,9 @@ function syncVisualViewport() {
 }
 
 function wireEvents() {
+  wireTagCompletion(editor, "editor-tag-suggestions", editorView);
+  wireTagCompletion(noteSearch, "search-tag-suggestions", listView);
+  listControls.after($("#search-tag-suggestions"));
   $("#sync-reminder-now")?.addEventListener("click", syncWithStash);
   $("#sync-reminder-later")?.addEventListener("click", snoozeSyncReminder);
   document.addEventListener("visibilitychange", () => { reminderGeneration += 1; refreshSyncReminder(); });
@@ -1300,6 +1457,10 @@ function wireEvents() {
   $("#delete-button").addEventListener("click", () => activeNote && removeNote(activeNote.id));
   $("#share-button").addEventListener("click", shareActiveNote);
   readerButton.addEventListener("click", toggleReaderMode);
+  reader.addEventListener("click", event => {
+    const tag = event.target.closest("button[data-tag]");
+    if (tag) searchForTag(tag.dataset.tag);
+  });
   editor.addEventListener("input", queueSave);
   editor.addEventListener("scroll", syncHighlightScroll);
   editor.addEventListener("focus", syncVisualViewport);

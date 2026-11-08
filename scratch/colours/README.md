@@ -1,4 +1,11 @@
-# Scratch colour assets
+# Archived Scratch colour assets
+
+These streams are retained unchanged as historical source assets only. Scratch
+v22 no longer offers or downloads 0dv modes and does not precache these files.
+Its fluorescent colours are copied exactly from ctrl_deck's `decks.json`:
+`#C7FF3E`, `#35E8FF`, `#FF4DA6`, `#A78BFA`, `#FF9257`.
+White, subdued red, and the slow colour wheel remain available. The playback
+notes below document the former v21 implementation, not the current app.
 
 Headerless unsigned 8-bit **G, R, B** triples, one colour/frame (0dv), 30 fps.
 No dimensions, timestamps, padding, or embedded metadata. Frame `i` starts at
