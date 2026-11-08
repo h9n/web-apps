@@ -1641,6 +1641,7 @@ function wireEvents() {
     });
   }
   searchButton?.addEventListener("click", () => setSearchOpen(searchControls.hidden));
+  $("#close-search")?.addEventListener("click", () => setSearchOpen(false));
   $("#clear-search")?.addEventListener("click", () => {
     noteSearch.value = "";
     renderNotes();
@@ -1648,6 +1649,12 @@ function wireEvents() {
   });
   noteSearch.addEventListener("input", renderNotes);
   noteSearch.addEventListener("keydown", event => {
+    // Autocomplete handles the first Escape; the next one returns to sorting.
+    if (event.key === "Escape" && !event.defaultPrevented && !event.isComposing) {
+      event.preventDefault();
+      setSearchOpen(false);
+      searchButton?.focus();
+    }
     if (event.key === "Enter") noteSearch.blur();
   });
   $("#new-note-button").addEventListener("click", createNote);

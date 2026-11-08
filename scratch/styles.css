@@ -157,6 +157,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 #search-controls { flex: 1 1 auto; min-width: 0; align-items: center; gap: 8px; }
 #search-controls:not([hidden]) { display: flex; }
 #clear-search { flex: 0 0 44px; font-size: 26px; font-weight: 400; }
+#close-search { flex: 0 0 auto; min-width: 44px; }
 #note-search {
   display: block;
   flex: 1 1 auto;

@@ -12,7 +12,7 @@
   <meta name="description" content="A local-first plain-text scratchpad with optional backup and sync.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/caret-180.png">
-  <link rel="stylesheet" href="styles.css?v=24">
+  <link rel="stylesheet" href="styles.css?v=25">
   <title>Scratch</title>
 </head>
 <body>
@@ -39,6 +39,7 @@
         <div id="search-controls" hidden>
           <input id="note-search" type="search" aria-label="Search notes" placeholder="Search notes" autocapitalize="none" autocorrect="off" spellcheck="false">
           <button id="clear-search" class="text-button" type="button" aria-label="Clear search">×</button>
+          <button id="close-search" class="text-button" type="button" aria-label="Close search">Close</button>
         </div>
       </div>
 
@@ -196,8 +197,8 @@
     </section>
   </dialog>
   <div id="delete-notice" role="status" hidden><span>Note deleted</span><button id="undo-delete" class="text-button" type="button">Undo</button></div>
-  <script src="sync.js?v=24" defer></script>
-  <script src="colours.js?v=24" defer></script>
-  <script src="app.js?v=24" defer></script>
+  <script src="sync.js?v=25" defer></script>
+  <script src="colours.js?v=25" defer></script>
+  <script src="app.js?v=25" defer></script>
 </body>
 </html>
