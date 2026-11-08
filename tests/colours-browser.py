@@ -1,5 +1,5 @@
 """Run: uv run --with playwright python tests/colours-browser.py.
-Real browser palette/offline checks and installed v22 → v23 shell upgrade.
+Real browser palette/offline checks and installed v23 → v24 shell upgrade.
 """
 import functools
 import http.server
@@ -63,10 +63,10 @@ def check(kind, url):
     page.wait_for_function('editorView.hidden && !dirty')
     page.evaluate('navigator.serviceWorker.ready')
     page.wait_for_function('navigator.serviceWorker.controller !== null')
-    urls = page.evaluate('caches.open("scratch-shell-v23").then(async c => (await c.keys()).map(r => r.url))')
+    urls = page.evaluate('caches.open("scratch-shell-v24").then(async c => (await c.keys()).map(r => r.url))')
     assert [u.rsplit('/',1)[-1] for u in urls if '.0dv' in u] == ['ctrl-deck-neon.30fps.10g.0dv']
     for file in ['app.js','styles.css','sync.js','colours.js']:
-        assert any(f'{file}?v=23' in u for u in urls)
+        assert any(f'{file}?v=24' in u for u in urls)
     context.set_offline(True); page.reload(); ready(page)
     assert button.get_attribute('data-mode') == 'lime'
     assert page.locator('.note-title').inner_text() == 'A fluorescent note #ideas'
@@ -77,7 +77,7 @@ def check(kind, url):
 
 def check_upgrade(kind):
     with tempfile.TemporaryDirectory(prefix='scratch-upgrade-', dir=ARTIFACTS.parent) as previous:
-        archive = subprocess.check_output(['git','archive','97dc0f8','scratch'],cwd=ROOT)
+        archive = subprocess.check_output(['git','archive','96f937b','scratch'],cwd=ROOT)
         with tarfile.open(fileobj=io.BytesIO(archive)) as source: source.extractall(previous,filter='data')
         class Handler(QuietHandler):
             root = previous
@@ -90,41 +90,48 @@ def check_upgrade(kind):
         try:
             page.goto(f'http://127.0.0.1:{server.server_port}/scratch/'); ready(page)
             page.locator('#new-note-button').click()
-            page.locator('#editor').fill('Preserved original #ideas')
+            page.locator('#editor').fill('Preserved original #inline\n\n#ideas #東京\n\n')
             page.locator('#back-button').click()
             page.wait_for_function('editorView.hidden && !dirty')
             before = page.evaluate('structuredClone(notes)')
             page.evaluate('localStorage.setItem("scratch-colour-v1","drift")')
             page.evaluate('navigator.serviceWorker.ready')
             page.wait_for_function('navigator.serviceWorker.controller !== null')
-            assert page.evaluate('caches.has("scratch-shell-v22")')
+            assert page.evaluate('caches.has("scratch-shell-v23")')
             Handler.root = str(ROOT)
             page.evaluate('''() => new Promise(async (resolve,reject) => {
               navigator.serviceWorker.addEventListener('controllerchange',resolve,{once:true});
               try { await (await navigator.serviceWorker.getRegistration()).update(); } catch(e) {reject(e);}
             })''')
-            page.wait_for_function('caches.keys().then(keys => keys.includes("scratch-shell-v23") && !keys.includes("scratch-shell-v22"))')
+            page.wait_for_function('caches.keys().then(keys => keys.includes("scratch-shell-v24") && !keys.includes("scratch-shell-v23"))')
             context.set_offline(True); page.reload(); ready(page)
             assert page.evaluate('structuredClone(notes)') == before, 'Upgrade must preserve every note field/revision'
             assert page.locator('#colour-button').get_attribute('data-mode') == 'white'
             page.locator('.note-button').click()
+            assert page.locator('#editor').input_value() == 'Preserved original #inline'
             page.locator('#reader-button').click(); page.locator('#reader').wait_for(state='visible')
-            page.locator('#reader button[data-tag="#ideas"]').click()
+            assert '#ideas' not in page.locator('#reader').inner_text()
+            page.locator('#reader-button').click()
+            page.locator('#tags-button').click()
+            page.locator('#tag-list [data-tag="#ideas"]').click()
             page.wait_for_function('editorView.hidden')
             assert page.locator('#note-search').input_value() == '#ideas'
+            assert page.evaluate('structuredClone(notes)') == before, 'Read/open/search must not rewrite existing metadata or revisions'
             page.locator('.note-button').click()
-            link = page.locator('#editor-tag-links [data-tag="#ideas"]')
-            rect = link.bounding_box()
-            page.mouse.click(rect['x']+rect['width']/2,rect['y']+rect['height']/2)
+            page.locator('#tags-button').click()
+            page.locator('#tag-input').fill('#offline')
+            page.locator('#tag-add').click()
+            page.locator('#tag-list [data-tag="#offline"]').click()
             page.wait_for_function('editorView.hidden && !dirty')
-            assert page.locator('#note-search').input_value() == '#ideas'
+            assert page.locator('#note-search').input_value() == '#offline'
+            tagged = page.evaluate('structuredClone(notes)')
             # A never-selected-before native neon mode must already be usable offline.
             for _ in range(7): page.locator('#colour-button').click()
             page.wait_for_function('document.querySelector("#colour-button").dataset.loaded === "true"')
             assert page.locator('#colour-button').get_attribute('data-mode') == 'neon'
             page.reload(); ready(page)
             page.wait_for_function('document.querySelector("#colour-button").dataset.loaded === "true"')
-            assert page.evaluate('structuredClone(notes)') == before
+            assert page.evaluate('structuredClone(notes)') == tagged
             page.locator('.note-button').click()
             page.locator('#editor').fill('Offline edited #ideas #work')
             page.locator('#back-button').click(); page.wait_for_function('editorView.hidden && !dirty')
@@ -132,7 +139,7 @@ def check_upgrade(kind):
             assert page.locator('.note-title').inner_text() == 'Offline edited #ideas #work'
             assert not errors,errors
             page.screenshot(path=str(ARTIFACTS / f'upgraded-offline-{kind.name}.png'))
-            print(kind.name,'real v22 → v23 upgrade, exact notes/revisions preserved, removed preference migration, offline tag/read/edit/reload PASS')
+            print(kind.name,'real v23 → v24 upgrade, exact notes/revisions preserved, removed preference migration, offline tag/read/edit/reload PASS')
         finally:
             context.close(); browser.close(); server.shutdown()
 

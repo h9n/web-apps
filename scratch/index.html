@@ -12,7 +12,7 @@
   <meta name="description" content="A local-first plain-text scratchpad with optional backup and sync.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/caret-180.png">
-  <link rel="stylesheet" href="styles.css?v=23">
+  <link rel="stylesheet" href="styles.css?v=24">
   <title>Scratch</title>
 </head>
 <body>
@@ -62,15 +62,22 @@
         <button id="back-button" class="text-button" type="button">‹ Notes</button>
         <span id="save-status" class="save-status" role="status">Saved</span>
         <div class="editor-actions">
+          <button id="tags-button" class="text-button" type="button" aria-label="Note tags" aria-controls="tag-panel" aria-expanded="false">#</button>
           <button id="reader-button" class="text-button" type="button" hidden>Read</button>
           <button id="share-button" class="text-button action-symbol" type="button" aria-label="Share note">↥</button>
           <button id="editor-settings-button" class="text-button" type="button" aria-label="Typography settings">Aa</button>
           <button id="delete-button" class="text-button danger" type="button" aria-label="Delete note">×</button>
         </div>
       </header>
-      <div id="tag-links-controls" hidden><button id="tag-links-toggle" class="text-button" type="button" aria-pressed="true">Tag links on</button><small id="tag-links-help">Tap a tag to search. Turn off to edit tags.</small></div>
+      <section id="tag-panel" aria-label="Note tags" hidden>
+        <fieldset id="tag-panel-fields">
+          <header><strong>Tags</strong><button id="tag-panel-done" class="text-button" type="button">Done</button></header>
+          <div id="tag-list"></div>
+          <div class="tag-entry"><input id="tag-input" class="text-field" aria-label="Add or edit tags" placeholder="#tag" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"><button id="tag-add" class="text-button" type="button">Apply</button></div>
+          <small>Tap a tag to search. Edit or × to change it. Inline tags stay in your text.</small>
+        </fieldset>
+      </section>
       <div id="editor-stage">
-        <pre id="editor-tag-links" aria-label="Note tag links"></pre>
         <pre id="editor-highlight" aria-hidden="true"></pre>
         <textarea id="editor" aria-label="Note text" autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" placeholder="Start typing…"></textarea>
       </div>
@@ -165,7 +172,7 @@
       </section>
       <section class="data-section" aria-labelledby="tags-heading">
         <h3 id="tags-heading">Tags, without the machinery</h3>
-        <p>Write #ideas or #receptacle anywhere in a note. Tap an underlined tag directly in the editor to find matching notes, then add words or tags in search to narrow the list. Turn Tag links off to place the cursor inside a tag and edit it; native typing, selection and scrolling stay available. Existing tags appear as you type # in notes or search. Read also has tag links. Tags stay in your text and travel with exports and sync.</p>
+        <p>Use # in the note toolbar to add, edit or remove tags, with suggestions from your notes. Tap a panel tag to search, then type more words or tags to narrow the results. Tags are stored as a final hashtag-only line separated from the body by a blank line, hidden in Edit and Read. Inline hashtags remain ordinary visible text and are never moved. Tags travel with exports and sync.</p>
       </section>
     </form>
   </dialog>
@@ -189,8 +196,8 @@
     </section>
   </dialog>
   <div id="delete-notice" role="status" hidden><span>Note deleted</span><button id="undo-delete" class="text-button" type="button">Undo</button></div>
-  <script src="sync.js?v=23" defer></script>
-  <script src="colours.js?v=23" defer></script>
-  <script src="app.js?v=23" defer></script>
+  <script src="sync.js?v=24" defer></script>
+  <script src="colours.js?v=24" defer></script>
+  <script src="app.js?v=24" defer></script>
 </body>
 </html>

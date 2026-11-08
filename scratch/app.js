@@ -218,93 +218,122 @@ function syncOrgPresentation() {
   if (orgEnabled) editorHighlight.innerHTML = highlightOrgSource(editor.value);
   else editorHighlight.textContent = "";
   if (readerMode) renderReader();
-  renderEditorTagLinks();
-}
-
-let tagLinksEnabled = true;
-let tagPointer = null;
-
-function renderEditorTagLinks() {
-  const mirror = $("#editor-tag-links");
-  const matches = tagMatches(editor.value);
-  $("#tag-links-controls").hidden = readerMode || !matches.length;
-  mirror.hidden = !tagLinksEnabled || readerMode;
-  $("#tag-links-toggle").textContent = tagLinksEnabled ? "Tag links on" : "Tag links off";
-  $("#tag-links-toggle").setAttribute("aria-pressed", String(tagLinksEnabled));
-  const fragment = document.createDocumentFragment();
-  let start = 0;
-  const text = value => {
-    const span = document.createElement("span");
-    span.textContent = value;
-    span.setAttribute("aria-hidden", "true");
-    fragment.append(span);
-  };
-  for (const match of matches) {
-    text(editor.value.slice(start, match.index));
-    const link = document.createElement("span");
-    link.textContent = match[0];
-    link.dataset.tag = match[0];
-    link.setAttribute("role", "link");
-    link.tabIndex = 0;
-    link.setAttribute("aria-label", `Search notes for ${match[0]}`);
-    fragment.append(link);
-    start = match.index + match[0].length;
-  }
-  text(editor.value.slice(start) + "\n");
-  mirror.replaceChildren(fragment);
-  syncHighlightScroll();
-}
-
-function tagAtPoint(x, y) {
-  // Range rectangles preserve wrapped tags, unlike one bounding box across lines.
-  for (const link of $("#editor-tag-links").querySelectorAll("[data-tag]")) {
-    const range = document.createRange();
-    range.selectNodeContents(link);
-    if ([...range.getClientRects()].some(r => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)) return link.dataset.tag;
-  }
-  return null;
-}
-
-function wireEditorTagLinks() {
-  $("#tag-links-toggle").addEventListener("click", () => {
-    tagLinksEnabled = !tagLinksEnabled;
-    renderEditorTagLinks();
-  });
-  // Never intercept pointerdown, selection, dragging or scrolling. The textarea
-  // owns all gestures. Only a short, unmoved, collapsed-selection tap navigates.
-  editor.addEventListener("pointerdown", event => {
-    tagPointer = tagLinksEnabled && event.isPrimary && event.button === 0 && editor.selectionStart === editor.selectionEnd
-      ? { x: event.clientX, y: event.clientY, at: performance.now(), id: event.pointerId } : null;
-  });
-  editor.addEventListener("pointercancel", () => { tagPointer = null; });
-  editor.addEventListener("pointermove", event => {
-    if (tagPointer && Math.hypot(event.clientX - tagPointer.x, event.clientY - tagPointer.y) > 8) tagPointer = null;
-  });
-  editor.addEventListener("pointerup", event => {
-    const tap = tagPointer;
-    tagPointer = null;
-    if (!tap || tap.id !== event.pointerId || performance.now() - tap.at > 300 || Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 8 || editor.selectionStart !== editor.selectionEnd) return;
-    const tag = tagAtPoint(event.clientX, event.clientY);
-    if (tag) searchForTag(tag);
-  });
-  $("#editor-tag-links").addEventListener("click", event => {
-    const link = event.target.closest("[data-tag]");
-    if (link) searchForTag(link.dataset.tag);
-  });
-  $("#editor-tag-links").addEventListener("keydown", event => {
-    if (event.key === "Enter" && event.target.dataset.tag) {
-      event.preventDefault();
-      searchForTag(event.target.dataset.tag);
-    }
-  });
 }
 
 function syncHighlightScroll() {
-  tagPointer = null;
   editorHighlight.scrollTop = editor.scrollTop;
   editorHighlight.scrollLeft = editor.scrollLeft;
-  $("#editor-tag-links").scrollTop = editor.scrollTop;
-  $("#editor-tag-links").scrollLeft = editor.scrollLeft;
+}
+
+function loadTagDraft() {
+  tagDraft = parseTagMetadata(activeNote.text);
+  panelTags = [...tagDraft.tags];
+  lastValidPanelTags = [...panelTags];
+  editor.value = tagDraft.body;
+  $("#tag-input").value = "";
+  editingTag = -1;
+  $("#tag-panel").hidden = true;
+  $("#tags-button").setAttribute("aria-expanded", "false");
+  renderTagPanel();
+}
+
+let editingTag = -1;
+function renderTagPanel() {
+  const list = $("#tag-list");
+  list.replaceChildren();
+  panelTags.forEach((tag, index) => {
+    const row = document.createElement("div");
+    row.className = "tag-row";
+    const link = document.createElement("button");
+    link.type = "button"; link.className = "text-button";
+    link.textContent = tag; link.dataset.tag = tag;
+    link.addEventListener("click", () => searchForTag(tag));
+    const edit = document.createElement("button");
+    edit.type = "button"; edit.className = "text-button";
+    edit.textContent = "Edit"; edit.setAttribute("aria-label", `Edit ${tag}`);
+    edit.addEventListener("click", () => {
+      const target = applyPendingTagAt(index);
+      if (!target || !target.count) return;
+      editingTag = target.index;
+      $("#tag-input").value = panelTags[editingTag];
+      $("#tag-input").focus();
+      $("#tag-input").select();
+    });
+    const remove = document.createElement("button");
+    remove.type = "button"; remove.className = "text-button";
+    remove.textContent = "×"; remove.setAttribute("aria-label", `Remove ${tag}`);
+    remove.addEventListener("click", () => {
+      const target = applyPendingTagAt(index);
+      if (!target) return;
+      panelTags.splice(target.index, target.count); queueSave(); renderTagPanel();
+    });
+    row.append(link, edit, remove); list.append(row);
+  });
+}
+
+function applyPendingTagAt(index) {
+  const previousLength = panelTags.length;
+  const previousEditing = editingTag;
+  if (!applyPendingTag()) return null;
+  const shift = panelTags.length - previousLength;
+  return {
+    index: index + (previousEditing >= 0 && previousEditing < index ? shift : 0),
+    count: previousEditing === index ? 1 + shift : 1
+  };
+}
+
+function projectedPanelTags() {
+  const value = $("#tag-input").value.trim();
+  if (!value && editingTag < 0) return [...panelTags];
+  const tags = value ? value.split(/\s+/u).map(tag => tag.startsWith("#") ? tag : "#" + tag) : [];
+  if (tags.some(tag => !/^#[\p{L}\p{M}\p{N}_-]+$/u.test(tag))) return null;
+  const projected = [...panelTags];
+  if (editingTag >= 0) projected.splice(editingTag, 1, ...tags);
+  else projected.push(...tags.filter(tag => !projected.some(existing => existing.toLocaleLowerCase() === tag.toLocaleLowerCase())));
+  return projected;
+}
+
+function applyPendingTag() {
+  const input = $("#tag-input");
+  const value = input.value.trim();
+  if (!value && editingTag < 0) return true;
+  const tags = projectedPanelTags();
+  if (!tags) {
+    input.setCustomValidity("Use letters, numbers, underscores or hyphens in tags.");
+    input.reportValidity();
+    return false;
+  }
+  input.setCustomValidity("");
+  panelTags = tags;
+  editingTag = -1; input.value = "";
+  queueSave(); renderTagPanel();
+  return true;
+}
+
+function wireTagPanel() {
+  $("#tags-button").addEventListener("click", () => {
+    if (editorClosing || tagNavigationPending) return;
+    const panel = $("#tag-panel");
+    if (!panel.hidden && !applyPendingTag()) return;
+    panel.hidden = !panel.hidden;
+    $("#tags-button").setAttribute("aria-expanded", String(!panel.hidden));
+    if (!panel.hidden) $("#tag-input").focus();
+  });
+  $("#tag-add").addEventListener("click", applyPendingTag);
+  $("#tag-input").addEventListener("input", event => {
+    $("#tag-input").setCustomValidity("");
+    if (!event.isComposing && projectedPanelTags()) queueSave();
+  });
+  $("#tag-input").addEventListener("compositionend", () => { if (projectedPanelTags()) queueSave(); });
+  $("#tag-input").addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.isComposing && !event.defaultPrevented) { event.preventDefault(); applyPendingTag(); }
+  });
+  $("#tag-panel-done").addEventListener("click", () => {
+    if (!applyPendingTag()) return;
+    $("#tag-panel").hidden = true;
+    $("#tags-button").setAttribute("aria-expanded", "false");
+    editor.focus();
+  });
 }
 
 function setOrgSyntax(enabled) {
@@ -359,6 +388,7 @@ async function searchForTag(tag) {
   // change the captured save, and repeated taps cannot queue duplicate closes.
   const wasReadOnly = editor.readOnly;
   editor.readOnly = true;
+  $("#tag-panel-fields").disabled = true;
   try {
     await closeEditor(); // Same queued flush and navigation as the Notes button.
     conflictsOnly = false;
@@ -371,6 +401,7 @@ async function searchForTag(tag) {
     saveStatus.textContent = "Save failed";
   } finally {
     editor.readOnly = wasReadOnly;
+    $("#tag-panel-fields").disabled = false;
     tagNavigationPending = false;
   }
 }
@@ -612,6 +643,34 @@ function setSearchOpen(open) {
   }
 }
 
+function parseTagMetadata(text) {
+  // Only a final nonblank line entirely made of hashtags is metadata. Preserve
+  // its original delimiter and trailing whitespace verbatim on unchanged saves.
+  const match = text.match(/(?:^|(?:\r?\n)(?:[\t ]*(?:\r?\n))?)([\t ]*#[\p{L}\p{M}\p{N}_-]+(?:[\t ]+#[\p{L}\p{M}\p{N}_-]+)*[\t ]*)((?:\r?\n[\t ]*)*)$/u);
+  if (!match) return { original: text, body: text, tags: [], suffix: '' };
+  const body = text.slice(0, match.index);
+  return { original: text, body, tags: match[1].trim().split(/[\t ]+/u), suffix: text.slice(body.length), ending: match[2] };
+}
+
+function serializeTagMetadata(parsed, body, tags) {
+  const sameTags = tags.length === parsed.tags.length && tags.every((tag, i) => tag === parsed.tags[i]);
+  if (body === parsed.body && sameTags) return parsed.original;
+  if (sameTags && tags.length) {
+    if (!parsed.body && body && !/^\r?\n/.test(parsed.suffix)) return body + '\n\n' + parsed.suffix;
+    return body + parsed.suffix;
+  }
+  if (!tags.length) return body;
+  // Reuse existing trailing blank lines rather than stripping authored whitespace.
+  const newline = parsed.original.includes('\r\n') ? '\r\n' : '\n';
+  const separator = !body ? '' : /\r?\n[\t ]*\r?\n$/.test(body) ? '' : /\n$/.test(body) ? newline : newline + newline;
+  return body + separator + tags.join(' ') + (parsed.ending || '');
+}
+// END TAG METADATA
+
+let tagDraft = parseTagMetadata('');
+let panelTags = [];
+let lastValidPanelTags = [];
+
 // Tags remain ordinary source text; derive this index from live notes, never sync it.
 // A tag starts at a word boundary and accepts Unicode letters/marks/numbers, _ and -.
 function tagMatches(text) {
@@ -626,7 +685,7 @@ function noteMatchesQuery(text, query) {
 }
 
 function currentTags() {
-  const texts = notes.map(note => note.id === activeNote?.id && !editorView.hidden ? editor.value : note.text);
+  const texts = notes.map(note => note.id === activeNote?.id && !editorView.hidden ? activeNote.text : note.text);
   return [...new Set(texts.flatMap(text => tagMatches(text).map(match => match[0].toLocaleLowerCase())))].sort((a, b) => a.localeCompare(b));
 }
 
@@ -653,7 +712,7 @@ function wireTagCompletion(input, id, host) {
     choices = []; selected = -1; range = null;
   }
   function complete(index) {
-    if (!range || !choices[index]) return;
+    if (!range || !choices[index] || input.disabled || input.readOnly || editorClosing || tagNavigationPending) return;
     const tag = choices[index];
     const { start, end } = range;
     const space = /^\s/.test(input.value.slice(end)) ? "" : " ";
@@ -950,6 +1009,7 @@ function makeId() {
   return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+let emptyNewNoteId = null;
 function createNote() {
   return queueLocalMutation(commitCreatedNote);
 }
@@ -960,6 +1020,7 @@ async function commitCreatedNote() {
   const note = ScratchSync.normalizeNote({ id: makeId(), text: "", syntax: "plain", createdAt: now, updatedAt: now });
   await transact("readwrite", store => store.put(note));
   notes.unshift(note);
+  emptyNewNoteId = note.id;
   conflictsOnly = false;
   noteSearch.value = "";
   openNote(note.id);
@@ -973,7 +1034,7 @@ function openNote(id) {
   editRevision += 1;
   readerMode = false;
   activeNote.syntax = activeNote.syntax === "org" ? "org" : "plain";
-  editor.value = activeNote.text;
+  loadTagDraft();
   editor.scrollTop = 0;
   editor.scrollLeft = 0;
   listView.hidden = true;
@@ -989,9 +1050,41 @@ function openNote(id) {
   });
 }
 
-async function closeEditor({ fromHistory = false } = {}) {
+let editorClosing = null;
+function closeEditor(options = {}) {
+  if (editorClosing) return editorClosing;
+  // Freeze the complete draft synchronously, before the mutation queue yields.
+  const wasReadOnly = editor.readOnly;
+  const fields = $("#tag-panel-fields");
+  const wasDisabled = fields.disabled;
+  editor.readOnly = true;
+  fields.disabled = true;
+  editorClosing = finishClosingEditor(options).finally(() => {
+    editor.readOnly = wasReadOnly;
+    fields.disabled = wasDisabled;
+    editorClosing = null;
+  });
+  return editorClosing;
+}
+
+function reportEditorSaveFailure() {
+  saveStatus.textContent = "Not saved — check tags or retry";
+}
+
+async function closeEditorFromUI(options = {}) {
+  try { await closeEditor(options); }
+  catch {
+    reportEditorSaveFailure();
+    if (activeNote) history.replaceState({ noteId: activeNote.id }, "", `#${encodeURIComponent(activeNote.id)}`);
+  }
+}
+
+async function finishClosingEditor({ fromHistory = false } = {}) {
   await flushSave();
-  if (activeNote && !activeNote.text.trim()) await removeNote(activeNote.id, false);
+  // Only discard a genuinely empty newly-created draft. Existing empty or
+  // whitespace-only notes may be imported authored data and must survive a no-op.
+  if (activeNote?.id === emptyNewNoteId && activeNote.text === "") await removeNote(activeNote.id, false);
+  emptyNewNoteId = null;
   activeNote = null;
   readerMode = false;
   document.body.classList.remove("org-editing");
@@ -1022,8 +1115,14 @@ function markNoteRevision() {
 
 function queueSave() {
   if (!activeNote) return;
-  renderEditorTagLinks();
-  activeNote.text = editor.value;
+  // Textareas normalize CRLF; an untouched visible body must not rewrite source
+  // line endings merely because its metadata was edited.
+  const body = editor.value === tagDraft.body.replace(/\r\n?/g, '\n') ? tagDraft.body : editor.value;
+  const projected = projectedPanelTags();
+  if (projected) lastValidPanelTags = projected;
+  const text = serializeTagMetadata(tagDraft, body, lastValidPanelTags);
+  if (text === activeNote.text) return;
+  activeNote.text = text;
   activeNote.updatedAt = Date.now();
   markNoteRevision();
   if (activeNote.syntax === "org") {
@@ -1075,6 +1174,7 @@ function flushSave() {
 }
 
 async function flushSaveInternal() {
+  if (activeNote && !applyPendingTag()) throw new Error("Invalid tag draft; note kept open.");
   if (saveInFlight) await saveInFlight;
   if (dirty) await saveActiveNoteInternal();
   if (dirty) throw new Error("Local save failed. No sync or export was performed.");
@@ -1338,7 +1438,7 @@ async function commitMergedSnapshot(remotes) {
     tombstones = merged.tombstones;
     if (activeNote) {
       activeNote = notes.find(note => note.id === activeNote.id) || null;
-      if (activeNote) { editor.value = activeNote.text; syncOrgPresentation(); }
+      if (activeNote) { loadTagDraft(); syncOrgPresentation(); }
       else { editorView.hidden = true; listView.hidden = false; history.replaceState({}, "", location.pathname + location.search); }
     }
     sortNotes(); renderNotes(); renderDeletedNotes();
@@ -1497,7 +1597,8 @@ function syncVisualViewport() {
 
 function wireEvents() {
   wireTagCompletion(editor, "editor-tag-suggestions", editorView);
-  wireEditorTagLinks();
+  wireTagCompletion($("#tag-input"), "panel-tag-suggestions", $("#tag-panel-fields"));
+  wireTagPanel();
   wireTagCompletion(noteSearch, "search-tag-suggestions", listView);
   listControls.after($("#search-tag-suggestions"));
   $("#sync-reminder-now")?.addEventListener("click", syncWithStash);
@@ -1551,10 +1652,10 @@ function wireEvents() {
   });
   $("#new-note-button").addEventListener("click", createNote);
   $("#empty-new-button").addEventListener("click", createNote);
-  $("#back-button").addEventListener("click", () => closeEditor());
-  $("#delete-button").addEventListener("click", () => activeNote && removeNote(activeNote.id));
-  $("#share-button").addEventListener("click", shareActiveNote);
-  readerButton.addEventListener("click", toggleReaderMode);
+  $("#back-button").addEventListener("click", () => closeEditorFromUI());
+  $("#delete-button").addEventListener("click", () => activeNote && removeNote(activeNote.id).catch(reportEditorSaveFailure));
+  $("#share-button").addEventListener("click", () => shareActiveNote().catch(reportEditorSaveFailure));
+  readerButton.addEventListener("click", () => toggleReaderMode().catch(reportEditorSaveFailure));
   reader.addEventListener("click", event => {
     const tag = event.target.closest("button[data-tag]");
     if (tag) searchForTag(tag.dataset.tag);
@@ -1612,7 +1713,7 @@ function wireEvents() {
   });
   window.addEventListener("online", () => scheduleStashBackup(1000));
   window.addEventListener("pagehide", () => { if (dirty) saveActiveNote(); });
-  window.addEventListener("popstate", () => { if (!editorView.hidden) closeEditor({ fromHistory: true }); });
+  window.addEventListener("popstate", () => { if (!editorView.hidden) closeEditorFromUI({ fromHistory: true }); });
   window.addEventListener("resize", syncVisualViewport);
   window.addEventListener("pageshow", syncVisualViewport);
   window.addEventListener("orientationchange", syncVisualViewport);

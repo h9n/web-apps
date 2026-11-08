@@ -78,7 +78,10 @@ def check(kind, url, phase):
     page.wait_for_function('editorView.hidden && !dirty')
     page.reload(); page.wait_for_function('typeof db !== "undefined" && db')
     page.locator('.note-button').filter(has_text='Edited').click()
-    assert editor.input_value() == expected
+    assert editor.input_value() == page.evaluate('(text) => parseTagMetadata(text).body', expected)
+    assert page.evaluate('activeNote.text') == expected
+    # Explicitly remove the metadata for the remaining inline-tag fixtures.
+    page.evaluate('() => {panelTags=[]; queueSave(); renderTagPanel();}')
     # Reader text must be literal/safe; hashtags in markup cannot become HTML.
     editor.fill('<img src=x onerror="window.__xss=1"> #fresh #東京 & text')
     page.locator('#reader-button').click()

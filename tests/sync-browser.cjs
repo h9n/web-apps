@@ -30,23 +30,34 @@ const BASE = process.env.SCRATCH_TEST_URL || 'http://127.0.0.1:8788/scratch/';
  async function fillEditor(page,text){
   // openNote schedules focus/caret placement on the next animation frame.
   await page.waitForFunction(()=>!editorView.hidden && document.activeElement===editor);
-  await page.fill('#editor',text);
-  assert.equal(await page.inputValue('#editor'),text,'editor contains the exact replacement text');
+  const replacement = await page.evaluate(text => panelTags.length ? parseTagMetadata(text).body : text, text);
+  await page.fill('#editor',replacement);
+  assert.equal(await page.inputValue('#editor'),replacement,'native editor contains body without hidden metadata');
  }
  async function add(page,text){await page.click('#new-note-button');await fillEditor(page,text);await page.click('#back-button');await page.waitForFunction(()=>!dirty);assert.deepEqual(await page.evaluate(()=>notes.map(n=>n.text)),[text],'seed saved exactly before sync');}
  async function sync(page){await page.click('#data-button');await page.click('#stash-sync-button');await page.waitForFunction(()=>!stashSyncRunning && document.querySelector('#sync-status').textContent.startsWith('Sync complete'));await page.locator('#data-dialog button[value="close"]').click();}
  const a=await device('Alpha');const b=await device('Beta');
  await add(a,'Shared seed\n#ideas');await sync(a);await sync(b);
  assert.equal(await b.locator('.note-row').count(),1,'unknown note downloaded');
+ // Exercise the actual new panel through real peer sync, not a fixture tag field.
+ await a.locator('.note-button').click();
+ await a.click('#tags-button');await a.fill('#tag-input','#panel');await a.click('#tag-add');
+ await a.click('#back-button');await a.waitForFunction(()=>editorView.hidden&&!dirty);
+ await sync(a);await sync(b);
+ assert.equal(await b.evaluate(()=>notes[0].text),'Shared seed\n\n#ideas #panel','panel metadata reaches peer in canonical text');
+ await b.locator('.note-button').click();
+ assert.equal(await b.inputValue('#editor'),'Shared seed','peer hides synced metadata');
+ await b.click('#tags-button');assert.deepEqual(await b.locator('#tag-list [data-tag]').allTextContents(),['#ideas','#panel']);
+ await b.click('#back-button');await b.waitForFunction(()=>editorView.hidden&&!dirty);
  const id=await a.evaluate(()=>notes[0].id);
- await a.locator('.note-button').click();await fillEditor(a,'Alpha offline edit\n#ideas');await a.click('#back-button');
- await b.locator('.note-button').click();await fillEditor(b,'Beta offline edit\n#ideas');await b.click('#back-button');
+ await a.locator('.note-button').click();await fillEditor(a,'Alpha offline edit\n\n#ideas #panel');await a.click('#back-button');
+ await b.locator('.note-button').click();await fillEditor(b,'Beta offline edit\n\n#ideas #panel');await b.click('#back-button');
  await a.waitForFunction(()=>!dirty && editorView.hidden);await b.waitForFunction(()=>!dirty && editorView.hidden);
- assert.deepEqual(await a.evaluate(()=>notes.map(n=>n.text)),['Alpha offline edit\n#ideas'],'Alpha saved exact edit before sync');
- assert.deepEqual(await b.evaluate(()=>notes.map(n=>n.text)),['Beta offline edit\n#ideas'],'Beta saved exact edit before sync');
+ assert.deepEqual(await a.evaluate(()=>notes.map(n=>n.text)),['Alpha offline edit\n\n#ideas #panel'],'Alpha saved exact edit before sync');
+ assert.deepEqual(await b.evaluate(()=>notes.map(n=>n.text)),['Beta offline edit\n\n#ideas #panel'],'Beta saved exact edit before sync');
  await sync(a);await sync(b);await sync(a);
  const texts=await a.evaluate(()=>notes.map(n=>n.text).sort());
- assert.deepEqual(texts,['Alpha offline edit\n#ideas','Beta offline edit\n#ideas'],'both concurrent edits preserved');
+ assert.deepEqual(texts,['Alpha offline edit\n\n#ideas #panel','Beta offline edit\n\n#ideas #panel'],'both concurrent edits preserved');
  assert.ok((await a.locator('.note-title').allTextContents()).some(t=>t.includes('Conflict')),'conflict visibly labelled');
  await sync(a);assert.equal(await a.locator('.note-row').count(),2,'repeated sync no duplicate');
  const staleSnapshot=await a.evaluate(()=>structuredClone({notes,tombstones}));
@@ -54,7 +65,7 @@ const BASE = process.env.SCRATCH_TEST_URL || 'http://127.0.0.1:8788/scratch/';
  await a.locator('.conflict-version').filter({hasText:'Beta offline edit'}).getByRole('button',{name:'Use this version',exact:true}).click();
  await a.waitForFunction(()=>!document.querySelector('#conflict-dialog').open && notes.length===1);
  await sync(a);await sync(b);await sync(a);
- assert.deepEqual(await b.evaluate(()=>notes.map(n=>n.text)),['Beta offline edit\n#ideas'],'selected resolution reaches second device');
+ assert.deepEqual(await b.evaluate(()=>notes.map(n=>n.text)),['Beta offline edit\n\n#ideas #panel'],'selected resolution reaches second device');
  await b.evaluate(snapshot=>applyMergedSnapshot([snapshot]),staleSnapshot);
  assert.equal(await b.evaluate(()=>notes.length),1,'old peer snapshot does not reopen conflict');
  assert.equal(await b.evaluate(()=>notes.some(n=>n.conflictOf)),false,'resolution removes conflict marker on peers');

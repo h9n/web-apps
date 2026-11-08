@@ -230,7 +230,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 }
 .editor-bar { flex: 0 0 auto; align-items: flex-end; padding-left: calc(14px + var(--safe-left)); }
 .editor-actions { display: flex; align-items: center; gap: 9px; }
-.save-status { color: var(--muted); font-size: 12px; padding-bottom: 14px; white-space: nowrap; }
+.save-status { color: var(--muted); font-size: 12px; padding-bottom: 14px; white-space: nowrap; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: right; }
 #editor-stage {
   position: relative;
   flex: 1 1 auto;
@@ -238,7 +238,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   overflow: hidden;
   background: var(--bg);
 }
-#editor, #editor-highlight, #editor-tag-links {
+#editor, #editor-highlight {
   display: block;
   width: 100%;
   height: 100%;
@@ -285,20 +285,28 @@ body.org-editing #editor::placeholder { -webkit-text-fill-color: var(--placehold
 .org-meta, .org-comment { color: var(--org-meta); }
 #editor::selection { background: var(--selection); }
 #editor::placeholder { color: var(--placeholder); }
-body.size-small :is(#editor, #editor-highlight, #editor-tag-links) { font-size: 18px; line-height: 1.1; font-weight: 500; }
-body.size-xsmall :is(#editor, #editor-highlight, #editor-tag-links) { font-size: 14px; line-height: 1.1; font-weight: 450; }
-body.font-mono :is(#editor, #editor-highlight, #editor-tag-links) { font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace; }
-body.font-univers :is(#editor, #editor-highlight, #editor-tag-links) { font-family: "Scratch Univers", Helvetica, Arial, sans-serif; font-weight: 400; }
-body.font-univers-black :is(#editor, #editor-highlight, #editor-tag-links) { font-family: "Scratch Univers Black", Helvetica, Arial, sans-serif; font-weight: 700; }
-body.font-univers-extended :is(#editor, #editor-highlight, #editor-tag-links) { font-family: "Scratch Univers Extended", Helvetica, Arial, sans-serif; font-weight: 900; }
-body.no-wrap :is(#editor, #editor-highlight, #editor-tag-links) { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+body.size-small :is(#editor, #editor-highlight) { font-size: 18px; line-height: 1.1; font-weight: 500; }
+body.size-xsmall :is(#editor, #editor-highlight) { font-size: 14px; line-height: 1.1; font-weight: 450; }
+body.font-mono :is(#editor, #editor-highlight) { font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace; }
+body.font-univers :is(#editor, #editor-highlight) { font-family: "Scratch Univers", Helvetica, Arial, sans-serif; font-weight: 400; }
+body.font-univers-black :is(#editor, #editor-highlight) { font-family: "Scratch Univers Black", Helvetica, Arial, sans-serif; font-weight: 700; }
+body.font-univers-extended :is(#editor, #editor-highlight) { font-family: "Scratch Univers Extended", Helvetica, Arial, sans-serif; font-weight: 900; }
+body.no-wrap :is(#editor, #editor-highlight) { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
 
-#editor-tag-links { position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; background: transparent; color: transparent; }
-#editor-tag-links [data-tag] { text-decoration: underline; text-decoration-color: var(--ink); text-underline-offset: 3px; }
-#editor-tag-links [data-tag]:focus-visible { outline: 2px solid var(--ink); }
-#tag-links-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding-inline: 20px; border-bottom: 1px solid var(--line); }
-#tag-links-controls small { font-size: 11px; line-height: 1.25; }
-#tag-links-toggle { flex-shrink: 0; font-size: 12px; }
+#tag-panel { flex: 0 0 auto; max-height: 45%; overflow-y: auto; padding: 8px 20px 12px; border-bottom: 1px solid var(--line); }
+#tag-panel fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+#tag-panel header, .tag-entry, .tag-row { display: flex; gap: 8px; align-items: center; }
+#tag-panel header { justify-content: space-between; }
+#tag-panel small { display: block; font-size: 12px; line-height: 1.4; }
+.tag-entry input { min-width: 0; flex: 1; }
+.tag-row > [data-tag] { flex: 1; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+#tag-panel .text-button, .editor-actions .text-button { min-width: 44px; }
+.editor-actions { gap: 3px; }
+@media (max-width: 480px) {
+  .editor-bar { flex-wrap: wrap; gap: 0; padding-right: calc(14px + var(--safe-right)); padding-bottom: 4px; }
+  .editor-bar .save-status { margin-left: auto; padding-bottom: 14px; }
+  .editor-actions { flex: 0 0 100%; justify-content: space-between; }
+}
 
 #reader {
   flex: 1 1 auto;
